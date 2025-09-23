@@ -1,0 +1,597 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Ingress Inventory Viewer</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root{--bg:#15243a;--card:#0f1b2e;--muted:#94a3b8;--accent:#60a5fa}
+    body{font-family:Inter,Segoe UI,Roboto,"Helvetica Neue",Arial;background:linear-gradient(180deg,#0b1f3f 0%,#0a1b36 100%);color:#e6eef8;margin:0;padding:20px}
+    header{display:flex;gap:12px;align-items:center;margin-bottom:18px}
+    h1{margin:0;font-size:20px}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+    input[type=text],select,button,textarea{background:#071526;border:1px solid #16324a;color:var(--muted);padding:8px;border-radius:6px}
+    button{cursor:pointer;color:#e6eef8;background:linear-gradient(180deg,var(--accent),#3b82f6);border:none}
+    .summary{margin-top:8px;color:var(--muted);font-size:13px}
+    #items{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;margin-top:16px}
+    .card{background:var(--card);border:1px solid rgba(255,255,255,0.03);padding:12px;border-radius:10px;display:flex;gap:12px}
+    .thumb{width:96px;height:96px;background:#08121b;border-radius:8px;flex:0 0 96px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .thumb img{width:100%;height:100%;object-fit:cover}
+    .meta{flex:1;min-width:0}
+    .meta h3{margin:0 0 6px 0;font-size:15px}
+    .meta .small{color:var(--muted);font-size:13px}
+    .tags{margin-top:8px;display:flex;gap:6px;flex-wrap:wrap}
+    .tag{background:rgba(255,255,255,0.04);color:var(--muted);padding:4px 8px;border-radius:999px;font-size:12px}
+    details{margin-top:10px;color:var(--muted)}
+    pre{white-space:pre-wrap;background:rgba(255,255,255,0.02);padding:8px;border-radius:6px;overflow:auto}
+    .controls > label{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:13px}
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Ingress Inventory Viewer</h1>
+    <div class="controls">
+      <input id="search" type="text" placeholder="Search id, displayName, designation, portalTitle..." />
+      <select id="filterType"><option value="">All resource types</option></select>
+      <select id="filterRarity"><option value="">All rarities</option></select>
+      <button id="refresh">Load inventory.json</button>
+      <button id="clear">Clear filters</button>
+    </div>
+  </header>
+
+
+
+  <div class="summary" id="summary">Loading inventory...</div>
+
+  <div id="items"></div>
+
+  <footer>Items shown: <span id="count">0</span> · Total raw items: <span id="total">0</span></footer>
+
+  <script>
+    let rawData = null;
+    let expandedData = null;
+    const itemsEl = document.getElementById('items');
+    const summaryEl = document.getElementById('summary');
+    const countEl = document.getElementById('count');
+    const totalEl = document.getElementById('total');
+    const searchInput = document.getElementById('search');
+    const filterType = document.getElementById('filterType');
+    const filterRarity = document.getElementById('filterRarity');
+
+    async function loadFromUrl(){
+      console.log('🔄 loadFromUrl() called');
+      console.log('📍 Current location:', location.href);
+      console.log('🌐 Protocol:', location.protocol);
+
+      summaryEl.textContent = 'Loading inventory.json...';
+
+      try{
+        console.log('🔄 Starting fetch request for inventory.json...');
+        const res = await fetch('inventory.json', {cache: 'no-store'});
+        console.log('📡 Fetch response received:', res.status, res.statusText);
+
+        if(!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+
+        console.log('📥 Parsing JSON response...');
+        const j = await res.json();
+        console.log('✅ JSON parsed successfully, calling setData...');
+        setData(j);
+        summaryEl.textContent = 'Inventory loaded successfully!';
+      }catch(e){
+        console.error('❌ Failed to load inventory.json:', e);
+        summaryEl.textContent = `Failed to load inventory.json: ${e.message}`;
+
+        // Additional debugging for file protocol
+        if (location.protocol === 'file:') {
+          console.warn('🚫 File protocol detected - this may be the issue');
+          summaryEl.textContent += ' (Note: file:// protocol may block local file access)';
+        }
+      }
+    }
+
+    function extractNestedItems(arr) {
+      console.log('🔍 Extracting nested items from containers...');
+      const itemMap = new Map();
+      const expandedItems = [];
+
+      // First, create a map of all items by ID for lookup
+      for(const item of arr) {
+        const id = item[0];
+        itemMap.set(id, item);
+      }
+
+      // Process each item
+      for(const item of arr) {
+        const [id, ts, meta] = item;
+        expandedItems.push(item);
+
+        // Check if this item is a container with nested items
+        if(meta.container && meta.container.stackableItems) {
+          console.log('📦 Found container:', id, 'with', meta.container.currentCount, 'items');
+
+          for(const stackableItem of meta.container.stackableItems) {
+            // For items with both itemGuids and exampleGameEntity (like keys in KEY_CAPSULE)
+            if(stackableItem.itemGuids && stackableItem.exampleGameEntity) {
+              const template = stackableItem.exampleGameEntity;
+              const [templateId, templateTs, templateMeta] = template;
+
+              console.log('🔑 Found', stackableItem.itemGuids.length, 'items with template:', templateMeta.portalCoupler?.portalTitle || templateMeta.modResource?.displayName || 'unknown');
+
+              // Create an item for each GUID using the template
+              for(const itemGuid of stackableItem.itemGuids) {
+                const enrichedMeta = {
+                  ...templateMeta,
+                  _storedIn: {
+                    containerId: id,
+                    containerType: meta.resource?.resourceType || 'CONTAINER'
+                  }
+                };
+
+                expandedItems.push([itemGuid, templateTs, enrichedMeta]);
+                console.log('✅ Added item:', itemGuid, 'using template from container:', id);
+              }
+            }
+            // For items with just exampleGameEntity (single items)
+            else if(stackableItem.exampleGameEntity) {
+              const embeddedEntity = stackableItem.exampleGameEntity;
+              console.log('🔑 Found single embedded entity in container:', embeddedEntity[0]);
+
+              // Extract the embedded item data
+              const [embeddedId, embeddedTs, embeddedMeta] = embeddedEntity;
+              const enrichedMeta = {
+                ...embeddedMeta,
+                _storedIn: {
+                  containerId: id,
+                  containerType: meta.resource?.resourceType || 'CONTAINER'
+                }
+              };
+
+              expandedItems.push([embeddedId, embeddedTs, enrichedMeta]);
+              console.log('✅ Added embedded item:', embeddedId, 'from container:', id);
+            }
+            // For items by GUID only (items that exist in main array)
+            else if(stackableItem.itemGuids) {
+              for(const nestedId of stackableItem.itemGuids) {
+                const nestedItem = itemMap.get(nestedId);
+                if(nestedItem) {
+                  // Create a copy of the nested item with container info
+                  const [nestedItemId, nestedTs, nestedMeta] = nestedItem;
+                  const enrichedMeta = {
+                    ...nestedMeta,
+                    _storedIn: {
+                      containerId: id,
+                      containerType: meta.resource?.resourceType || 'CONTAINER'
+                    }
+                  };
+
+                  expandedItems.push([nestedItemId, nestedTs, enrichedMeta]);
+                  console.log('📋 Added nested item:', nestedItemId, 'from container:', id);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      console.log('✅ Extraction complete. Original:', arr.length, 'Expanded:', expandedItems.length);
+      return expandedItems;
+    }
+
+    function setData(json){
+      console.log('📊 setData() called with:', typeof json, json);
+      rawData = json;
+      const arr = Array.isArray(json.result)?json.result:json;
+      console.log('📋 Array to process:', Array.isArray(arr), 'length:', arr.length);
+
+      // Extract nested items from containers and store globally
+      expandedData = extractNestedItems(arr);
+
+      totalEl.textContent = expandedData.length;
+      console.log('🏷️ Calling populateFilters...');
+      populateFilters(expandedData);
+      console.log('🎨 Calling render...');
+      render(expandedData);
+      console.log('✅ setData() completed successfully');
+    }
+
+    function getDisplayType(resourceType) {
+      const modTypes = ['EXTRA_SHIELD', 'RES_SHIELD', 'HEATSINK', 'LINK_AMPLIFIER', 'MULTIHACK', 'TRANSMUTER_ATTACK', 'TURRET', 'ULTRA_LINK_AMP'];
+      const weaponTypes = ['EMP_BURSTER', 'FLIP_CARD', 'ULTRA_STRIKE'];
+      const cubeTypes = ['POWER_CUBE', 'BOOSTED_POWER_CUBE'];
+      const capsuleTypes = ['CAPSULE', 'KEY_CAPSULE', 'KINETIC_CAPSULE', 'QUANTUM_CAPSULE', 'INTEREST_CAPSULE'];
+
+      if (resourceType === 'EMITTER_A') return 'Resonators';
+      if (resourceType === 'PORTAL_LINK_KEY') return 'Keys';
+      if (resourceType === 'MEDIA') return 'Media';
+      if (resourceType === 'PORTAL_POWERUP' || resourceType === 'PLAYER_POWERUP') return 'Powerups';
+      if (capsuleTypes.includes(resourceType)) return 'Capsules';
+      if (modTypes.includes(resourceType)) return 'Mods';
+      if (weaponTypes.includes(resourceType)) return 'Weapons';
+      if (cubeTypes.includes(resourceType)) return 'Cubes';
+      return resourceType;
+    }
+
+    let typeOrder = [];
+    function populateFilters(arr){
+      const types = new Set();
+      const rarities = new Set();
+      for(const it of arr){
+        const meta = it[2] || {};
+        const r = meta.resource || meta.resourceWithLevels || meta.modResource;
+        if(r && r.resourceType) {
+          if (r.resourceType === 'DRONE') continue; // hide Drone from dropdown
+          types.add(getDisplayType(r.resourceType));
+        }
+        if(r && r.resourceRarity) rarities.add(r.resourceRarity);
+        if(meta.modResource && meta.modResource.rarity) rarities.add(meta.modResource.rarity);
+      }
+      // reset
+      filterType.innerHTML = '<option value="">All resource types</option>';
+      filterRarity.innerHTML = '<option value="">All rarities</option>';
+      const sortedTypes = [...types].sort();
+      typeOrder = sortedTypes;
+      sortedTypes.forEach(t=>{
+        const o = document.createElement('option'); o.value = t; o.textContent = t; filterType.appendChild(o);
+      });
+      [...rarities].sort().forEach(t=>{
+        const o = document.createElement('option'); o.value = t; o.textContent = t; filterRarity.appendChild(o);
+      });
+    }
+
+    function render(arr){
+      const q = (searchInput.value||'').toLowerCase().trim();
+      const typeFilter = filterType.value;
+      const rarityFilter = filterRarity.value;
+      const filtered = arr.filter(it=>{
+        const id = it[0]||'';
+        const ts = it[1]||0;
+        const meta = it[2]||{};
+        const strings = [id, String(ts)];
+        // collect searchable fields
+        if(meta.modResource && meta.modResource.displayName) strings.push(meta.modResource.displayName);
+        if(meta.timedPowerupResource && meta.timedPowerupResource.designation) strings.push(meta.timedPowerupResource.designation);
+        if(meta.resourceWithLevels && meta.resourceWithLevels.resourceType) strings.push(meta.resourceWithLevels.resourceType);
+        if(meta.resource && meta.resource.resourceType) strings.push(meta.resource.resourceType);
+        if(meta.storyItem && meta.storyItem.shortDescription) strings.push(meta.storyItem.shortDescription);
+        if(meta.portalCoupler && meta.portalCoupler.portalTitle) strings.push(meta.portalCoupler.portalTitle);
+        if(meta.portalCoupler && meta.portalCoupler.portalAddress) strings.push(meta.portalCoupler.portalAddress);
+
+        const combined = strings.join(' ').toLowerCase();
+        if(q && !combined.includes(q)) return false;
+
+        // Hide Drone items entirely
+        const rForHide = meta.resource || meta.resourceWithLevels || meta.modResource || {};
+        if (rForHide.resourceType === 'DRONE') return false;
+
+        if(typeFilter){
+          const r = meta.resource || meta.resourceWithLevels || meta.modResource || {};
+          const displayType = getDisplayType(r.resourceType);
+          if(displayType !== typeFilter) return false;
+        }
+        if(rarityFilter){
+          const r = meta.resource || meta.resourceWithLevels || meta.modResource || {};
+          const rar = r.resourceRarity || meta.modResource && meta.modResource.rarity;
+          if(rar !== rarityFilter) return false;
+        }
+        return true;
+      });
+
+      // Group items by display title to consolidate duplicates
+      const grouped = new Map();
+      for(const it of filtered){
+        const id = it[0]||'';
+        const ts = it[1]||0;
+        const meta = it[2]||{};
+        const title = displayTitle(id,meta);
+
+        if(!grouped.has(title)){
+          grouped.set(title, []);
+        }
+        grouped.get(title).push({id, ts, meta, item: it});
+      }
+
+      itemsEl.innerHTML = '';
+      countEl.textContent = grouped.size;
+      summaryEl.textContent = `Showing ${grouped.size} unique items`;
+
+      // Convert to array and sort by item type
+      const sortedEntries = Array.from(grouped.entries()).sort((a, b) => {
+        const [titleA, itemsA] = a;
+        const [titleB, itemsB] = b;
+        const metaA = itemsA[0].meta;
+        const metaB = itemsB[0].meta;
+
+        // Get resource types for categorization
+        const typeA = metaA.resourceWithLevels?.resourceType || metaA.resource?.resourceType || metaA.modResource?.resourceType;
+        const typeB = metaB.resourceWithLevels?.resourceType || metaB.resource?.resourceType || metaB.modResource?.resourceType;
+
+        // When no type filter, group by dropdown order first
+        if (!typeFilter) {
+          const dispA = getDisplayType(typeA);
+          const dispB = getDisplayType(typeB);
+          const idxA = typeOrder.indexOf(dispA);
+          const idxB = typeOrder.indexOf(dispB);
+          if (idxA !== idxB) return idxA - idxB;
+        }
+
+        // Powerups: sort groups by count (most -> least), then by title
+        const dispA = getDisplayType(typeA);
+        const dispB = getDisplayType(typeB);
+        if (dispA === 'Powerups' && dispB === 'Powerups') {
+          if (itemsA.length !== itemsB.length) return itemsB.length - itemsA.length;
+          return titleA.localeCompare(titleB);
+        }
+
+        // Resonators: sort by level (L8 -> L1)
+        if (typeA === 'EMITTER_A' && typeB === 'EMITTER_A') {
+          const levelA = metaA.resourceWithLevels?.level || 0;
+          const levelB = metaB.resourceWithLevels?.level || 0;
+          return levelB - levelA;
+        }
+
+        // For weapons and cubes: sort by type first, then by level (highest first)
+        const weaponTypes = ['EMP_BURSTER', 'FLIP_CARD', 'ULTRA_STRIKE'];
+        const cubeTypes = ['POWER_CUBE', 'BOOSTED_POWER_CUBE'];
+
+        if ((weaponTypes.includes(typeA) || cubeTypes.includes(typeA)) &&
+            (weaponTypes.includes(typeB) || cubeTypes.includes(typeB))) {
+          // First sort by type name
+          if (typeA !== typeB) {
+            return typeA.localeCompare(typeB);
+          }
+          // Then sort by level within the same type (highest first)
+          const levelA = metaA.resourceWithLevels?.level || 0;
+          const levelB = metaB.resourceWithLevels?.level || 0;
+          return levelB - levelA; // Higher level first
+        }
+
+        // For mods: sort by type name, then by rarity
+        const modTypes = ['EXTRA_SHIELD', 'RES_SHIELD', 'HEATSINK', 'LINK_AMPLIFIER', 'MULTIHACK', 'TRANSMUTER_ATTACK', 'TURRET', 'ULTRA_LINK_AMP'];
+        if (modTypes.includes(typeA) && modTypes.includes(typeB)) {
+          // First sort by mod type name
+          if (typeA !== typeB) {
+            return typeA.localeCompare(typeB);
+          }
+          // Then sort by rarity (VERY_RARE > RARE > COMMON)
+          const rarityA = metaA.modResource?.rarity || '';
+          const rarityB = metaB.modResource?.rarity || '';
+          const rarityOrder = { 'VERY_RARE': 3, 'RARE': 2, 'COMMON': 1, '': 0 };
+          return (rarityOrder[rarityB] || 0) - (rarityOrder[rarityA] || 0);
+        }
+
+        // Default alphabetical sort
+        return titleA.localeCompare(titleB);
+      });
+
+      for(const [title, items] of sortedEntries){
+        // Sort by timestamp (most recent first) and take the first item as representative
+        items.sort((a, b) => Number(b.ts) - Number(a.ts));
+        const representative = items[0];
+        const {id, ts, meta} = representative;
+
+        const card = document.createElement('article'); card.className='card';
+        const thumb = document.createElement('div'); thumb.className='thumb';
+        const imgUrl = findImage(meta);
+        if(imgUrl){
+          const img = document.createElement('img'); img.src = imgUrl; img.alt = id; thumb.appendChild(img);
+        }else{
+          thumb.textContent = id.slice(0,6);
+          thumb.style.color='var(--muted)'; thumb.style.fontSize='13px';
+        }
+
+        const metaDiv = document.createElement('div'); metaDiv.className='meta';
+        const titleEl = document.createElement('h3');
+        titleEl.textContent = title;
+
+        // Add count badge if there are duplicates
+        if(items.length > 1){
+          const countBadge = document.createElement('span');
+          countBadge.textContent = ` ×${items.length}`;
+          countBadge.style.cssText = 'background: var(--accent); color: white; padding: 2px 6px; border-radius: 999px; font-size: 11px; margin-left: 8px;';
+          titleEl.appendChild(countBadge);
+        }
+
+        const small = document.createElement('div'); small.className='small';
+        const infoItems = [];
+
+        // Add address for portal keys
+        if(meta.portalCoupler && meta.portalCoupler.portalAddress) {
+          infoItems.push(meta.portalCoupler.portalAddress);
+        }
+
+        // Add storage location info if item is in a container
+        if(meta._storedIn) {
+          infoItems.push(`📦 Stored in ${meta._storedIn.containerType.toLowerCase()}`);
+        }
+
+        small.innerHTML = infoItems.filter(Boolean).join(' · ');
+
+        const tags = document.createElement('div'); tags.className='tags';
+        if(meta.modResource && meta.modResource.displayName){ tags.appendChild(makeTag(meta.modResource.displayName)); }
+        if(meta.timedPowerupResource && meta.timedPowerupResource.designation){ tags.appendChild(makeTag(meta.timedPowerupResource.designation)); }
+        if(meta.playerPowerupResource && meta.playerPowerupResource.playerPowerupEnum){ tags.appendChild(makeTag(meta.playerPowerupResource.playerPowerupEnum)); }
+
+        metaDiv.appendChild(titleEl); metaDiv.appendChild(small); metaDiv.appendChild(tags);
+
+        card.appendChild(thumb); card.appendChild(metaDiv);
+        itemsEl.appendChild(card);
+      }
+    }
+
+    function makeTag(text){ const s=document.createElement('span'); s.className='tag'; s.textContent=text; return s; }
+    function displayTitle(id,meta){
+      if(meta.modResource && meta.modResource.displayName) {
+        const rarity = meta.modResource.rarity || '';
+        return rarity ? `${meta.modResource.displayName} (${rarity})` : meta.modResource.displayName;
+      }
+      if(meta.portalCoupler && meta.portalCoupler.portalTitle) return meta.portalCoupler.portalTitle;
+      if(meta.storyItem && meta.storyItem.shortDescription) return meta.storyItem.shortDescription;
+      if(meta.resourceWithLevels && meta.resourceWithLevels.resourceType) {
+        // For resonators, display only level (e.g., "L8")
+        if (meta.resourceWithLevels.resourceType === 'EMITTER_A') {
+          return 'L' + (meta.resourceWithLevels.level || '');
+        }
+        return meta.resourceWithLevels.resourceType + ' L' + (meta.resourceWithLevels.level||'');
+      }
+      if(meta.resource && meta.resource.resourceType) {
+        // Special handling for flip cards to show type
+        if(meta.resource.resourceType === 'FLIP_CARD' && meta.flipCard && meta.flipCard.flipCardType) {
+          return `${meta.resource.resourceType} (${meta.flipCard.flipCardType})`;
+        }
+        // Powerups: show designation/enum as title so each groups separately
+        if (meta.resource.resourceType === 'PORTAL_POWERUP' && meta.timedPowerupResource && meta.timedPowerupResource.designation) {
+          return meta.timedPowerupResource.designation;
+        }
+        if (meta.resource.resourceType === 'PLAYER_POWERUP' && meta.playerPowerupResource && meta.playerPowerupResource.playerPowerupEnum) {
+          return meta.playerPowerupResource.playerPowerupEnum;
+        }
+        return meta.resource.resourceType;
+      }
+      return id;
+    }
+
+    function findImage(meta){
+      // Prefer explicit/remote images first
+      if(meta.imageByUrl && meta.imageByUrl.imageUrl) return meta.imageByUrl.imageUrl.replace(/^http:/,'https:');
+      if(meta.portalCoupler && meta.portalCoupler.portalImageUrl) return meta.portalCoupler.portalImageUrl.replace(/^http:/,'https:');
+      if(meta.storyItem && meta.storyItem.primaryUrl && (meta.storyItem.primaryUrl.match(/\.(png|jpg|jpeg|gif)$/i))) return meta.storyItem.primaryUrl;
+
+      // Helper for rarity filenames
+      const rarityName = (rar)=>{
+        if(!rar) return null;
+        if(rar === 'COMMON') return 'Common';
+        if(rar === 'RARE') return 'Rare';
+        if(rar === 'VERY_RARE') return 'Very_Rare';
+        return null;
+      };
+
+      // Level-based items
+      if(meta.resourceWithLevels && meta.resourceWithLevels.resourceType){
+        const rwl = meta.resourceWithLevels;
+        const lvl = rwl.level;
+        if(rwl.resourceType === 'EMP_BURSTER' && lvl) return `assets/images/XMP_Burster_L${lvl}.webp`;
+        if(rwl.resourceType === 'ULTRA_STRIKE' && lvl) return `assets/images/Ultra_Strike_L${lvl}.webp`;
+        if(rwl.resourceType === 'POWER_CUBE' && lvl) return `assets/images/Power_Cube_L${lvl}.webp`;
+        if(rwl.resourceType === 'EMITTER_A' && lvl) return `assets/images/Resonator_L${lvl}.webp`;
+      }
+
+      // Mod items
+      if(meta.modResource && meta.modResource.resourceType){
+        const mr = meta.modResource;
+        const rar = rarityName(mr.rarity);
+        switch(mr.resourceType){
+          case 'RES_SHIELD':
+            if(rar) return `assets/images/Portal_Shield_${rar}.webp`;
+            break;
+          case 'EXTRA_SHIELD': {
+            const dn = (mr.displayName||'').toLowerCase();
+            if(dn.includes('aegis')) return 'assets/images/Aegis_Shield.webp';
+            if(dn.includes('axa')) return 'assets/images/AXA_Shield.webp';
+            // Fallback to very rare portal shield art if name not recognized
+            return 'assets/images/Portal_Shield_Very_Rare.webp';
+          }
+          case 'HEATSINK':
+            if(rar) return `assets/images/Heat_Sink_${rar}.webp`;
+            break;
+          case 'MULTIHACK':
+            if(rar) return `assets/images/Multi-Hack_${rar}.webp`;
+            break;
+          case 'LINK_AMPLIFIER':
+            if(rar === 'Rare' || rar === 'Very_Rare') return `assets/images/Link_Amp_${rar}.webp`;
+            break;
+          case 'ULTRA_LINK_AMP':
+            return 'assets/images/SoftBank_Ultra_Link.webp';
+          case 'FORCE_AMP':
+            return 'assets/images/Force_Amp.webp';
+          case 'TURRET':
+            return 'assets/images/Turret.webp';
+          case 'TRANSMUTER_ATTACK':
+            return 'assets/images/ITO_EN_Transmuter_plus.webp';
+          case 'TRANSMUTER_DEFENSE':
+            return 'assets/images/ITO_EN_Transmuter_minus.webp';
+          default:
+            break;
+        }
+      }
+
+      // Portal Powerups
+      if (meta.resource && meta.resource.resourceType === 'PORTAL_POWERUP') {
+        if (meta.timedPowerupResource && meta.timedPowerupResource.designation) {
+          const d = meta.timedPowerupResource.designation;
+          if (d === 'FRACK') return 'assets/images/Portal_Fracker.webp';
+
+          // Beacon images
+          const beaconMap = {
+            'AEGISNOVA': 'Beacon-Aegis_Nova.webp',
+            'VIALUX': 'Beacon-Via_Lux.webp',
+            'VIANOIR': 'Beacon-Via_Noir.webp',
+            'NEMESIS': 'Beacon-Nemesis.webp',
+            'NIA': 'Beacon-Niantic.webp',
+            'BN_BLM': 'Beacon-BLM.webp',
+            'BN_MHN_LOGO': 'Beacon-MHN_Logo.webp',
+            'BN_MHN_PALICO': 'Beacon-MHN_Palico.webp',
+            'ENL': 'Beacon-Enlightened.webp',
+            'FW_ENL': 'Firework_ENL.webp',
+            'RES': 'Beacon-Resistance.webp',
+            'FW_RES': 'Firework_RES.webp',
+            'MEET': 'Beacon-Meetup.webp',
+            'OBSIDIAN': 'Beacon-Obsidian.webp',
+            'EXO5': 'Beacon-EXO5.webp',
+            'PEACE': 'Beacon-Peace.webp',
+            'REAWAKENS': 'Beacon-Reawakens.webp',
+            'TOASTY': 'Beacon-Toast.webp',
+            'LOOK': 'Beacon-Target.webp',
+            'TARGET': 'Beacon-Target.webp',
+          };
+          if (beaconMap[d]) return `assets/images/${beaconMap[d]}`;
+
+          // Battle Beacon (use rarity-specific art)
+          if (d === 'BB_BATTLE') {
+            const rar = meta.resource?.resourceRarity || '';
+            if (rar === 'RARE') return 'assets/images/Battle_Beacon_Rare.webp';
+            if (rar === 'VERY_RARE') return 'assets/images/Battle_Beacon_Very_Rare.webp';
+            return 'assets/images/Battle_Beacon_Very_Rare.webp';
+          }
+        }
+      }
+
+      // Player Powerups
+      if (meta.resource && meta.resource.resourceType === 'PLAYER_POWERUP') {
+        if (meta.playerPowerupResource && meta.playerPowerupResource.playerPowerupEnum === 'APEX') {
+          return 'assets/images/Apex.webp';
+        }
+      }
+
+      // Flip Cards (ADA/JARVIS)
+      if(meta.resource && meta.resource.resourceType === 'FLIP_CARD' && meta.flipCard && meta.flipCard.flipCardType){
+        const t = meta.flipCard.flipCardType;
+        if(t === 'ADA') return 'assets/images/ADA_Refactor.webp';
+        if(t === 'JARVIS') return 'assets/images/JARVIS_Virus.webp';
+      }
+
+      // Lawson Power Cube for BOOSTED_POWER_CUBE
+      if(meta.resource && meta.resource.resourceType === 'BOOSTED_POWER_CUBE'){
+        return 'assets/images/Lawson_Power_Cube.webp';
+      }
+
+      // If others without local art, fall through to null.
+      return null;
+    }
+
+    // events
+    document.getElementById('refresh').addEventListener('click', loadFromUrl);
+    document.getElementById('clear').addEventListener('click', ()=>{searchInput.value='';filterType.value='';filterRarity.value=''; if(expandedData) render(expandedData);});
+    searchInput.addEventListener('input', ()=>{ if(expandedData) render(expandedData); });
+    filterType.addEventListener('change', ()=>{ if(expandedData) render(expandedData); });
+    filterRarity.addEventListener('change', ()=>{ if(expandedData) render(expandedData); });
+
+
+    // try load automatically
+    loadFromUrl();
+  </script>
+</body>
+</html>
