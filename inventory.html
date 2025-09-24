@@ -10,14 +10,30 @@
     body{font-family:Inter,Segoe UI,Roboto,"Helvetica Neue",Arial;background:linear-gradient(180deg,#0b1f3f 0%,#0a1b36 100%);color:#e6eef8;margin:0;padding:20px}
     header{display:flex;gap:12px;align-items:center;margin-bottom:18px}
     h1{margin:0;font-size:20px}
+    .title-pill{display:inline-flex;align-items:center;justify-content:center;margin-left:8px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;font-size:18px;font-weight:600}
     .controls{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
     input[type=text],select,button,textarea{background:#071526;border:1px solid #16324a;color:var(--muted);padding:8px;border-radius:6px}
+    .key-search{display:block;width:100%;box-sizing:border-box;margin:8px 0}
     button{cursor:pointer;color:#e6eef8;background:linear-gradient(180deg,var(--accent),#3b82f6);border:none}
+    /* Keys sort buttons */
+    .sort-btn{margin-left:8px;padding:6px 10px;font-size:13px;border-radius:8px;border:1px solid #16324a;background:rgba(255,255,255,0.06);color:var(--muted);cursor:pointer}
+    .sort-btn.active{background:linear-gradient(180deg,var(--accent),#3b82f6);color:#fff;border-color:transparent}
+    .sort-btn:hover{filter:brightness(1.05)}
     .summary{margin-top:8px;color:var(--muted);font-size:13px}
-    #items{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px;margin-top:16px}
+    #items{display:block;margin-top:16px}
     .card{background:var(--card);border:1px solid rgba(255,255,255,0.03);padding:12px;border-radius:10px;display:flex;gap:12px}
-    .thumb{width:96px;height:96px;background:#08121b;border-radius:8px;flex:0 0 96px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .card.compact{width:max-content;padding:6px;gap:0;justify-content:flex-start;margin:0}
+    .thumb{width:96px;height:96px;background:#08121b;border-radius:8px;flex:0 0 96px;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
     .thumb img{width:100%;height:100%;object-fit:cover}
+    .count-pill{position:absolute;right:6px;bottom:6px;width:33px;height:33px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:600;box-shadow:0 2px 6px rgba(0,0,0,0.4)}
+    .img-title-pill{position:absolute;right:6px;top:6px;padding:2px 8px;border-radius:4px;background:#fff;color:#000;font-size:12px;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,0.3)}
+    /* Centered variant for Media titles */
+    .img-title-pill.media{top:50%;left:50%;right:auto;transform:translate(-50%,-50%);font-size:10px;max-width:90%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+    .diamond-strip{position:absolute;top:6px;right:6px;display:flex;gap:4px}
+    .diamond{width:12px;height:12px;transform:rotate(45deg);border-radius:2px}
+    .diamond.pink{background:#ec4899}
+    .diamond.purple{background:#8b5cf6}
+    .diamond.teal{background:#14b8a6}
     .meta{flex:1;min-width:0}
     .meta h3{margin:0 0 6px 0;font-size:15px}
     .meta .small{color:var(--muted);font-size:13px}
@@ -27,15 +43,27 @@
     pre{white-space:pre-wrap;background:rgba(255,255,255,0.02);padding:8px;border-radius:6px;overflow:auto}
     .controls > label{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:13px}
     footer{margin-top:18px;color:var(--muted);font-size:13px}
+    .type-section{margin-top:24px;display:inline-block;vertical-align:top;width:340px;margin-right:12px}
+    /* Widen Keys column by 50% (340 -> 510) */
+    .type-section.type-keys{width:510px}
+    .type-section h2{margin:0 0 8px 0;font-size:16px;color:#cfe3ff;border-left:3px solid var(--accent);padding-left:8px}
+    /* Compact cards already reduce their own width; keep vertical stacking */
+    /* Narrower columns for specific types */
+    .type-section.type-resonators,
+    .type-section.type-weapons,
+    .type-section.type-cubes,
+    .type-section.type-mods,
+    .type-section.type-powerups,
+    .type-section.type-capsules,
+    .type-section.type-media{width:200px}
   </style>
 </head>
 <body>
   <header>
-    <h1>Ingress Inventory Viewer</h1>
+    <h1>Ingress Inventory Viewer</h1><span id="totalPill" class="title-pill">0</span>
     <div class="controls">
-      <input id="search" type="text" placeholder="Search id, displayName, designation, portalTitle..." />
-      <select id="filterType"><option value="">All resource types</option></select>
       <select id="filterRarity"><option value="">All rarities</option></select>
+      <label><input id="hideCapsuled" type="checkbox" checked /> Hide Capsuled Items</label>
       <button id="refresh">Load inventory.json</button>
       <button id="clear">Clear filters</button>
     </div>
@@ -56,9 +84,19 @@
     const summaryEl = document.getElementById('summary');
     const countEl = document.getElementById('count');
     const totalEl = document.getElementById('total');
-    const searchInput = document.getElementById('search');
-    const filterType = document.getElementById('filterType');
+    const titleTotal = document.getElementById('totalPill');
     const filterRarity = document.getElementById('filterRarity');
+    const hideCapsuledInput = document.getElementById('hideCapsuled');
+    // Keys-only search query and focus restoration
+    let keySearchQuery = '';
+    let keySearchShouldRefocus = false;
+    let keySearchSelection = null; // [start,end]
+    // Keys sorting mode and directions
+    let keySortMode = 'alpha'; // 'alpha' | 'count' | 'time' | 'distance'
+    let keySortDir = 'asc';    // alpha: 'asc' (A-Z) | 'desc' (Z-A)
+    let keyCountDir = 'asc';   // count: 'asc' (least→most) | 'desc' (most→least)
+    let keyTimeDir = 'asc';    // time: 'asc' (Oldest→Youngest) | 'desc' (Youngest→Oldest)
+    let keyDistanceDir = 'asc';// distance: 'asc' (Closest→Farthest) | 'desc' (Farthest→Closest)
 
     async function loadFromUrl(){
       console.log('🔄 loadFromUrl() called');
@@ -191,6 +229,19 @@
       expandedData = extractNestedItems(arr);
 
       totalEl.textContent = expandedData.length;
+      // Exclude keys inside key lockers (KEY_CAPSULE) from the title total pill
+      try {
+        const keyLockerKeyCount = expandedData.reduce((acc, it) => {
+          const meta = it[2] || {};
+          const inKeyLocker = meta._storedIn && meta._storedIn.containerType === 'KEY_CAPSULE';
+          const isKey = !!(meta.portalCoupler && (meta.portalCoupler.resourceType === 'PORTAL_LINK_KEY' || meta.portalCoupler.portalGuid));
+          return acc + (inKeyLocker && isKey ? 1 : 0);
+        }, 0);
+        if (titleTotal) titleTotal.textContent = String(expandedData.length - keyLockerKeyCount);
+      } catch(e) {
+        console.warn('Failed to compute key locker exclusion:', e);
+        if (titleTotal) titleTotal.textContent = String(expandedData.length);
+      }
       console.log('🏷️ Calling populateFilters...');
       populateFilters(expandedData);
       console.log('🎨 Calling render...');
@@ -199,7 +250,7 @@
     }
 
     function getDisplayType(resourceType) {
-      const modTypes = ['EXTRA_SHIELD', 'RES_SHIELD', 'HEATSINK', 'LINK_AMPLIFIER', 'MULTIHACK', 'TRANSMUTER_ATTACK', 'TURRET', 'ULTRA_LINK_AMP'];
+      const modTypes = ['EXTRA_SHIELD', 'RES_SHIELD', 'HEATSINK', 'LINK_AMPLIFIER', 'MULTIHACK', 'TRANSMUTER_ATTACK', 'TURRET', 'ULTRA_LINK_AMP', 'FORCE_AMP'];
       const weaponTypes = ['EMP_BURSTER', 'FLIP_CARD', 'ULTRA_STRIKE'];
       const cubeTypes = ['POWER_CUBE', 'BOOSTED_POWER_CUBE'];
       const capsuleTypes = ['CAPSULE', 'KEY_CAPSULE', 'KINETIC_CAPSULE', 'QUANTUM_CAPSULE', 'INTEREST_CAPSULE'];
@@ -223,55 +274,41 @@
         const meta = it[2] || {};
         const r = meta.resource || meta.resourceWithLevels || meta.modResource;
         if(r && r.resourceType) {
-          if (r.resourceType === 'DRONE') continue; // hide Drone from dropdown
+          if (r.resourceType === 'DRONE') continue; // exclude Drone from type sections
           types.add(getDisplayType(r.resourceType));
         }
         if(r && r.resourceRarity) rarities.add(r.resourceRarity);
         if(meta.modResource && meta.modResource.rarity) rarities.add(meta.modResource.rarity);
       }
       // reset
-      filterType.innerHTML = '<option value="">All resource types</option>';
       filterRarity.innerHTML = '<option value="">All rarities</option>';
-      const sortedTypes = [...types].sort();
-      typeOrder = sortedTypes;
-      sortedTypes.forEach(t=>{
-        const o = document.createElement('option'); o.value = t; o.textContent = t; filterType.appendChild(o);
-      });
-      [...rarities].sort().forEach(t=>{
-        const o = document.createElement('option'); o.value = t; o.textContent = t; filterRarity.appendChild(o);
-      });
+      const preferred = ['Keys','Cubes','Weapons','Resonators','Mods','Powerups','Capsules','Media'];
+      typeOrder = preferred.filter(t=>types.has(t)).concat(
+        [...types].filter(t=>!preferred.includes(t)).sort()
+      );
+      const rarityLabel = { 'COMMON': 'Common', 'RARE': 'Rare', 'VERY_RARE': 'Very Rare' };
+      [...rarities]
+        .filter(r => r !== 'VERY_COMMON')
+        .sort()
+        .forEach(t=>{
+          const o = document.createElement('option');
+          o.value = t; // keep value as token for filtering logic
+          o.textContent = rarityLabel[t] || t;
+          filterRarity.appendChild(o);
+        });
     }
 
     function render(arr){
-      const q = (searchInput.value||'').toLowerCase().trim();
-      const typeFilter = filterType.value;
+      const hideCapsuled = hideCapsuledInput.checked;
       const rarityFilter = filterRarity.value;
       const filtered = arr.filter(it=>{
         const id = it[0]||'';
         const ts = it[1]||0;
         const meta = it[2]||{};
-        const strings = [id, String(ts)];
-        // collect searchable fields
-        if(meta.modResource && meta.modResource.displayName) strings.push(meta.modResource.displayName);
-        if(meta.timedPowerupResource && meta.timedPowerupResource.designation) strings.push(meta.timedPowerupResource.designation);
-        if(meta.resourceWithLevels && meta.resourceWithLevels.resourceType) strings.push(meta.resourceWithLevels.resourceType);
-        if(meta.resource && meta.resource.resourceType) strings.push(meta.resource.resourceType);
-        if(meta.storyItem && meta.storyItem.shortDescription) strings.push(meta.storyItem.shortDescription);
-        if(meta.portalCoupler && meta.portalCoupler.portalTitle) strings.push(meta.portalCoupler.portalTitle);
-        if(meta.portalCoupler && meta.portalCoupler.portalAddress) strings.push(meta.portalCoupler.portalAddress);
-
-        const combined = strings.join(' ').toLowerCase();
-        if(q && !combined.includes(q)) return false;
 
         // Hide Drone items entirely
         const rForHide = meta.resource || meta.resourceWithLevels || meta.modResource || {};
         if (rForHide.resourceType === 'DRONE') return false;
-
-        if(typeFilter){
-          const r = meta.resource || meta.resourceWithLevels || meta.modResource || {};
-          const displayType = getDisplayType(r.resourceType);
-          if(displayType !== typeFilter) return false;
-        }
         if(rarityFilter){
           const r = meta.resource || meta.resourceWithLevels || meta.modResource || {};
           const rar = r.resourceRarity || meta.modResource && meta.modResource.rarity;
@@ -280,153 +317,426 @@
         return true;
       });
 
-      // Group items by display title to consolidate duplicates
-      const grouped = new Map();
-      for(const it of filtered){
+      // Build buckets by display type, then group by display title within each bucket
+      const typeBuckets = new Map(); // displayType -> Map<groupKey, {items:[], gmeta:{displayType, weaponType?, cubeType?, level?, title}}>
+      for (const it of filtered) {
         const id = it[0]||'';
         const ts = it[1]||0;
         const meta = it[2]||{};
+        const rawType = meta.resourceWithLevels?.resourceType || meta.resource?.resourceType || meta.modResource?.resourceType;
+        const displayType = getDisplayType(rawType);
         const title = displayTitle(id,meta);
-
-        if(!grouped.has(title)){
-          grouped.set(title, []);
+        const needsTypeInKey = (displayType === 'Weapons' || displayType === 'Cubes' || displayType === 'Mods');
+        const groupKey = needsTypeInKey ? `${title}|${rawType}` : title;
+        if (!typeBuckets.has(displayType)) typeBuckets.set(displayType, new Map());
+        const grouped = typeBuckets.get(displayType);
+        if (!grouped.has(groupKey)) {
+          const gmeta = { displayType, title, level: 0 };
+          if (displayType === 'Weapons') {
+            gmeta.weaponType = rawType || '';
+            gmeta.level = meta.resourceWithLevels?.level || 0;
+          } else if (displayType === 'Cubes') {
+            gmeta.cubeType = rawType || '';
+            gmeta.level = meta.resourceWithLevels?.level || 0;
+          } else if (displayType === 'Resonators') {
+            gmeta.level = meta.resourceWithLevels?.level || 0;
+          } else if (displayType === 'Mods') {
+            gmeta.modType = rawType || '';
+            gmeta.rarity = meta.modResource?.rarity || '';
+          }
+          grouped.set(groupKey, { items: [], gmeta });
         }
-        grouped.get(title).push({id, ts, meta, item: it});
+        grouped.get(groupKey).items.push({id, ts, meta, item: it});
       }
 
+      // Compute total unique groups (used for non-visual totals only)
+      const totalGroups = Array.from(typeBuckets.values()).reduce((sum, grp) => sum + grp.size, 0);
       itemsEl.innerHTML = '';
-      countEl.textContent = grouped.size;
-      summaryEl.textContent = `Showing ${grouped.size} unique items`;
 
-      // Convert to array and sort by item type
-      const sortedEntries = Array.from(grouped.entries()).sort((a, b) => {
-        const [titleA, itemsA] = a;
-        const [titleB, itemsB] = b;
-        const metaA = itemsA[0].meta;
-        const metaB = itemsB[0].meta;
+      // Comparator reused per section
+      const compareGroups = (a, b) => {
+        const [keyA, groupA] = a;
+        const [keyB, groupB] = b;
+        const itemsA = groupA.items;
+        const itemsB = groupB.items;
+        const metaA = itemsA[0]?.meta || {};
+        const metaB = itemsB[0]?.meta || {};
+        const titleA = keyA.split('|')[0];
+        const titleB = keyB.split('|')[0];
 
-        // Get resource types for categorization
-        const typeA = metaA.resourceWithLevels?.resourceType || metaA.resource?.resourceType || metaA.modResource?.resourceType;
-        const typeB = metaB.resourceWithLevels?.resourceType || metaB.resource?.resourceType || metaB.modResource?.resourceType;
-
-        // When no type filter, group by dropdown order first
-        if (!typeFilter) {
-          const dispA = getDisplayType(typeA);
-          const dispB = getDisplayType(typeB);
-          const idxA = typeOrder.indexOf(dispA);
-          const idxB = typeOrder.indexOf(dispB);
-          if (idxA !== idxB) return idxA - idxB;
-        }
+        const dispA = groupA.gmeta.displayType;
+        const dispB = groupB.gmeta.displayType;
 
         // Powerups: sort groups by count (most -> least), then by title
-        const dispA = getDisplayType(typeA);
-        const dispB = getDisplayType(typeB);
         if (dispA === 'Powerups' && dispB === 'Powerups') {
           if (itemsA.length !== itemsB.length) return itemsB.length - itemsA.length;
           return titleA.localeCompare(titleB);
         }
 
+        // Weapons: enforce type order Bursters -> Ultra Strikes -> Flip Cards, then level desc
+        if (dispA === 'Weapons' && dispB === 'Weapons') {
+          const typeA = groupA.gmeta.weaponType || '';
+          const typeB = groupB.gmeta.weaponType || '';
+          const order = {'EMP_BURSTER':0,'ULTRA_STRIKE':1,'FLIP_CARD':2};
+          if (typeA !== typeB) return (order[typeA]||9) - (order[typeB]||9);
+          const levelA = groupA.gmeta.level || 0;
+          const levelB = groupB.gmeta.level || 0;
+          if (levelA !== levelB) return levelB - levelA;
+          return titleA.localeCompare(titleB);
+        }
+
         // Resonators: sort by level (L8 -> L1)
-        if (typeA === 'EMITTER_A' && typeB === 'EMITTER_A') {
-          const levelA = metaA.resourceWithLevels?.level || 0;
-          const levelB = metaB.resourceWithLevels?.level || 0;
+        if (dispA === 'Resonators' && dispB === 'Resonators') {
+          const levelA = groupA.gmeta.level || 0;
+          const levelB = groupB.gmeta.level || 0;
           return levelB - levelA;
         }
 
-        // For weapons and cubes: sort by type first, then by level (highest first)
-        const weaponTypes = ['EMP_BURSTER', 'FLIP_CARD', 'ULTRA_STRIKE'];
-        const cubeTypes = ['POWER_CUBE', 'BOOSTED_POWER_CUBE'];
-
-        if ((weaponTypes.includes(typeA) || cubeTypes.includes(typeA)) &&
-            (weaponTypes.includes(typeB) || cubeTypes.includes(typeB))) {
-          // First sort by type name
-          if (typeA !== typeB) {
-            return typeA.localeCompare(typeB);
-          }
-          // Then sort by level within the same type (highest first)
-          const levelA = metaA.resourceWithLevels?.level || 0;
-          const levelB = metaB.resourceWithLevels?.level || 0;
-          return levelB - levelA; // Higher level first
+        // Cubes: sort by type then by level (highest first)
+        if (dispA === 'Cubes' && dispB === 'Cubes') {
+          const typeA = groupA.gmeta.cubeType || '';
+          const typeB = groupB.gmeta.cubeType || '';
+          if (typeA !== typeB) return typeA.localeCompare(typeB);
+          const levelA = groupA.gmeta.level || 0;
+          const levelB = groupB.gmeta.level || 0;
+          return levelB - levelA;
         }
 
-        // For mods: sort by type name, then by rarity
-        const modTypes = ['EXTRA_SHIELD', 'RES_SHIELD', 'HEATSINK', 'LINK_AMPLIFIER', 'MULTIHACK', 'TRANSMUTER_ATTACK', 'TURRET', 'ULTRA_LINK_AMP'];
-        if (modTypes.includes(typeA) && modTypes.includes(typeB)) {
-          // First sort by mod type name
-          if (typeA !== typeB) {
-            return typeA.localeCompare(typeB);
-          }
-          // Then sort by rarity (VERY_RARE > RARE > COMMON)
-          const rarityA = metaA.modResource?.rarity || '';
-          const rarityB = metaB.modResource?.rarity || '';
+        // Mods: specific type order, then rarity (VR > R > C)
+        if (dispA === 'Mods' && dispB === 'Mods') {
+          const typeA = groupA.gmeta.modType || '';
+          const typeB = groupB.gmeta.modType || '';
+          const typeOrder = {
+            'RES_SHIELD': 0,
+            'EXTRA_SHIELD': 0,
+            'HEATSINK': 1,
+            'MULTIHACK': 2,
+            'LINK_AMPLIFIER': 3,
+            'TRANSMUTER_ATTACK': 4,
+            'TRANSMUTER_DEFENSE': 4,
+            'TURRET': 5,
+            'FORCE_AMP': 6
+          };
+          const oa = (typeOrder[typeA] ?? 9);
+          const ob = (typeOrder[typeB] ?? 9);
+          if (oa !== ob) return oa - ob;
+          const rarityA = groupA.gmeta.rarity || '';
+          const rarityB = groupB.gmeta.rarity || '';
           const rarityOrder = { 'VERY_RARE': 3, 'RARE': 2, 'COMMON': 1, '': 0 };
-          return (rarityOrder[rarityB] || 0) - (rarityOrder[rarityA] || 0);
+          if ((rarityOrder[rarityB]||0) !== (rarityOrder[rarityA]||0)) return (rarityOrder[rarityB]||0) - (rarityOrder[rarityA]||0);
+          if (typeA !== typeB) return typeA.localeCompare(typeB);
+          return titleA.localeCompare(titleB);
         }
 
-        // Default alphabetical sort
+        // Default alphabetical by title
         return titleA.localeCompare(titleB);
-      });
+      };
 
-      for(const [title, items] of sortedEntries){
-        // Sort by timestamp (most recent first) and take the first item as representative
-        items.sort((a, b) => Number(b.ts) - Number(a.ts));
-        const representative = items[0];
-        const {id, ts, meta} = representative;
+      // Render by type sections
+        let shownCount = 0;
+        for (const t of typeOrder) {
+          if (!typeBuckets.has(t)) continue;
+          const grouped = typeBuckets.get(t);
+          let entries = Array.from(grouped.entries());
+          if (t === 'Weapons') {
+            const order = {'EMP_BURSTER':0,'ULTRA_STRIKE':1,'FLIP_CARD':2};
+            entries.sort((a,b)=>{
+              const ga = a[1].gmeta; const gb = b[1].gmeta;
+              const oa = (order[ga.weaponType] ?? 9); const ob = (order[gb.weaponType] ?? 9);
+              if (oa !== ob) return oa - ob;
+              const la = ga.level || 0; const lb = gb.level || 0;
+              if (la !== lb) return lb - la;
+              const ta = a[0].split('|')[0]; const tb = b[0].split('|')[0];
+              return ta.localeCompare(tb);
+            });
+          } else if (t === 'Resonators') {
+            entries.sort((a,b)=>{
+              const la = a[1].gmeta.level || 0; const lb = b[1].gmeta.level || 0;
+              return lb - la;
+            });
+          } else if (t === 'Cubes') {
+            entries.sort((a,b)=>{
+              const ta = a[1].gmeta.cubeType || ''; const tb = b[1].gmeta.cubeType || '';
+              if (ta !== tb) return ta.localeCompare(tb);
+              const la = a[1].gmeta.level || 0; const lb = b[1].gmeta.level || 0;
+              return lb - la;
+            });
+          } else if (t === 'Keys') {
+            // Sort keys by selected mode
+            if (keySortMode === 'count') {
+              entries.sort((a,b)=>{
+                const ca = (a[1].items && a[1].items.length) ? a[1].items.length : 0;
+                const cb = (b[1].items && b[1].items.length) ? b[1].items.length : 0;
+                return keyCountDir === 'desc' ? (cb - ca) : (ca - cb);
+              });
+            } else if (keySortMode === 'time') {
+              entries.sort((a,b)=>{
+                const ta = (a[1].items||[]).reduce((m,it)=>Math.max(m, Number(it.ts)||0), 0);
+                const tb = (b[1].items||[]).reduce((m,it)=>Math.max(m, Number(it.ts)||0), 0);
+                return keyTimeDir === 'desc' ? (tb - ta) : (ta - tb);
+              });
+            } else if (keySortMode === 'distance') {
+              if (userLocation) {
+                const distFor = (entry)=>{
+                  const gv = entry[1];
+                  const im = (gv.items && gv.items[0] && gv.items[0].meta) || null;
+                  const locStr = im && im.portalCoupler && im.portalCoupler.portalLocation;
+                  const loc = locStr ? decodePortalLocation(locStr) : null;
+                  if (!loc) return Number.POSITIVE_INFINITY;
+                  const km = haversineKm(userLocation.lat, userLocation.lon, loc.lat, loc.lon);
+                  return isFinite(km) ? km : Number.POSITIVE_INFINITY;
+                };
+                entries.sort((a,b)=>{
+                  const da = distFor(a);
+                  const db = distFor(b);
+                  return keyDistanceDir === 'desc' ? (db - da) : (da - db);
+                });
+              }
+            } else {
+              // alpha
+              entries.sort((a,b)=>{
+                const ta = a[0].split('|')[0];
+                const tb = b[0].split('|')[0];
+                return keySortDir === 'desc' ? tb.localeCompare(ta) : ta.localeCompare(tb);
+              });
+            }
+          } else {
+            entries.sort(compareGroups);
+          }
 
-        const card = document.createElement('article'); card.className='card';
-        const thumb = document.createElement('div'); thumb.className='thumb';
-        const imgUrl = findImage(meta);
-        if(imgUrl){
-          const img = document.createElement('img'); img.src = imgUrl; img.alt = id; thumb.appendChild(img);
-        }else{
-          thumb.textContent = id.slice(0,6);
-          thumb.style.color='var(--muted)'; thumb.style.fontSize='13px';
+          // Apply Hide Capsuled filter for display only
+          const displayedEntries = entries.filter(([k, gv]) => {
+            return !hideCapsuled || (gv.items && gv.items.some(it => !isCapsuled(it.meta)));
+          });
+
+          const section = document.createElement('section');
+          section.className = 'type-section type-' + t.toLowerCase();
+          const h = document.createElement('h2');
+          const sectionCount = entries.reduce((sum, e) => sum + (e[1].items ? e[1].items.length : 0), 0);
+          h.textContent = t;
+          const pill = document.createElement('span');
+          pill.textContent = String(sectionCount);
+          pill.style.cssText = 'background: var(--accent); color: white; padding: 2px 6px; border-radius: 999px; font-size: 11px; margin-left: 8px;';
+          h.appendChild(pill);
+          if (t === 'Keys') {
+            const makeBtn = (labelActive, labelInactive, isActive, onToggle) => {
+              const b = document.createElement('button');
+              b.className = 'sort-btn' + (isActive ? ' active' : '');
+              b.textContent = isActive ? labelActive() : labelInactive;
+              b.addEventListener('click', onToggle);
+              return b;
+            };
+            const alphaBtn = makeBtn(
+              () => (keySortDir === 'desc' ? 'Z-A' : 'A-Z'),
+              'Alphabetical',
+              keySortMode === 'alpha',
+              () => { keySortMode = 'alpha'; keySortDir = (keySortDir === 'asc' ? 'desc' : 'asc'); if (expandedData) render(expandedData); }
+            );
+            h.appendChild(alphaBtn);
+            const countBtn = makeBtn(
+              () => (keyCountDir === 'desc' ? 'Most→Least' : 'Least→Most'),
+              'Count',
+              keySortMode === 'count',
+              () => { keySortMode = 'count'; keyCountDir = (keyCountDir === 'asc' ? 'desc' : 'asc'); if (expandedData) render(expandedData); }
+            );
+            h.appendChild(countBtn);
+            const timeBtn = makeBtn(
+              () => (keyTimeDir === 'desc' ? 'Youngest→Oldest' : 'Oldest→Youngest'),
+              'Acquired',
+              keySortMode === 'time',
+              () => { keySortMode = 'time'; keyTimeDir = (keyTimeDir === 'asc' ? 'desc' : 'asc'); if (expandedData) render(expandedData); }
+            );
+            h.appendChild(timeBtn);
+            const distBtn = makeBtn(
+              () => (keyDistanceDir === 'desc' ? 'Farthest→Closest' : 'Closest→Farthest'),
+              'Distance',
+              keySortMode === 'distance',
+              () => { keySortMode = 'distance'; keyDistanceDir = (keyDistanceDir === 'asc' ? 'desc' : 'asc'); if (expandedData) render(expandedData); }
+            );
+            h.appendChild(distBtn);
+          }
+          section.appendChild(h);
+          // Keys: add a full-width search box above cards
+          let keysAppended = 0;
+          if (t === 'Keys') {
+            const keySearch = document.createElement('input');
+            keySearch.type = 'text';
+            keySearch.id = 'keySearch';
+            keySearch.className = 'key-search';
+            keySearch.placeholder = 'Search keys...';
+            keySearch.value = keySearchQuery;
+            keySearch.addEventListener('input', (e)=>{
+              const el = e.target;
+              keySearchQuery = el.value.toLowerCase();
+              try { keySearchSelection = [el.selectionStart, el.selectionEnd]; } catch(_) { keySearchSelection = null; }
+              keySearchShouldRefocus = true;
+              if (expandedData) render(expandedData);
+            });
+            section.appendChild(keySearch);
+            if (keySearchShouldRefocus) {
+              setTimeout(()=>{
+                const ks = document.getElementById('keySearch');
+                if (ks) {
+                  ks.focus();
+                  if (keySearchSelection && keySearchSelection.length === 2) {
+                    try { ks.setSelectionRange(keySearchSelection[0], keySearchSelection[1]); } catch(_) {}
+                  }
+                }
+                keySearchShouldRefocus = false;
+              }, 0);
+            }
+          }
+
+          for (const [groupKey, groupVal] of displayedEntries) {
+            const items = groupVal.items;
+            // Sort by timestamp (most recent first) and take representative (prefer non-capsuled)
+            const preferred = hideCapsuled ? items.filter(it => !isCapsuled(it.meta)) : items;
+            const repList = preferred.length ? preferred : items;
+            repList.sort((a, b) => Number(b.ts) - Number(a.ts));
+            const representative = repList[0];
+            const {id, ts, meta} = representative;
+
+            const card = document.createElement('article'); card.className='card';
+            const thumb = document.createElement('div'); thumb.className='thumb';
+            const imgUrl = findImage(meta);
+            if(imgUrl){
+              const img = document.createElement('img'); img.src = imgUrl; img.alt = id; thumb.appendChild(img);
+            }else{
+              thumb.textContent = id.slice(0,6);
+              thumb.style.color='var(--muted)'; thumb.style.fontSize='13px';
+            }
+
+            const isPowerup = groupVal.gmeta.displayType === 'Powerups';
+            const isCapsules = groupVal.gmeta.displayType === 'Capsules';
+            const isOverlayType = (groupVal.gmeta.displayType === 'Resonators' || groupVal.gmeta.displayType === 'Weapons' || groupVal.gmeta.displayType === 'Cubes');
+            const isMod = groupVal.gmeta.displayType === 'Mods';
+            const isMedia = groupVal.gmeta.displayType === 'Media';
+            if (isPowerup || isCapsules || isOverlayType || isMod || isMedia) { card.classList.add('compact'); }
+            if (isOverlayType) {
+              let label = (groupKey.split('|')[0] || '').replace(/^L/, '');
+              const titlePill = document.createElement('span');
+              titlePill.className = 'img-title-pill';
+              titlePill.textContent = label;
+              thumb.appendChild(titlePill);
+            }
+            // Media: move title onto image, centered, smaller text
+            if (isMedia) {
+              const mediaTitle = (groupKey.split('|')[0] || '');
+              const pill = document.createElement('span');
+              pill.className = 'img-title-pill media';
+              pill.textContent = mediaTitle;
+              thumb.appendChild(pill);
+            }
+            if (isMod) {
+              const cfg = getModDiamondConfig(meta);
+              if (cfg){
+                const strip = document.createElement('div'); strip.className = 'diamond-strip';
+                for(let i=0;i<cfg.count;i++){ const d=document.createElement('span'); d.className = 'diamond ' + cfg.color; strip.appendChild(d);} 
+                thumb.appendChild(strip);
+              }
+            }
+            let metaDiv;
+            if(!isPowerup && !isCapsules && !isOverlayType && !isMod && !isMedia){
+              metaDiv = document.createElement('div'); metaDiv.className='meta';
+              const titleEl = document.createElement('h3');
+              titleEl.textContent = groupKey.split('|')[0];
+              metaDiv.appendChild(titleEl);
+            }
+
+            if(items.length > 1){
+              const countBadge = document.createElement('span');
+              countBadge.className = 'count-pill';
+              countBadge.textContent = String(items.length);
+              thumb.appendChild(countBadge);
+            }
+
+            if(!isPowerup && !isCapsules && !isOverlayType && !isMod && !isMedia){
+              const small = document.createElement('div'); small.className='small';
+              const infoItems = [];
+              if(meta.portalCoupler && meta.portalCoupler.portalAddress) { infoItems.push(meta.portalCoupler.portalAddress); }
+              if(meta._storedIn) { infoItems.push(`📦 Stored in ${meta._storedIn.containerType.toLowerCase()}`); }
+              let lastTs = 0;
+              if (t === 'Keys') {
+                try {
+                  lastTs = Array.isArray(items) ? items.reduce((m, it) => Math.max(m, Number(it.ts)||0), 0) : 0;
+                } catch(_) { lastTs = 0; }
+              }
+              const topLine = infoItems.filter(Boolean).join(' · ');
+              let infoHtml = topLine;
+              if (t === 'Keys' && lastTs > 0) {
+                infoHtml += (topLine ? '<br>' : '') + `Last Acquired: ${formatLocalTs(lastTs)}`;
+              }
+              if (t === 'Keys' && userLocation && meta.portalCoupler && meta.portalCoupler.portalLocation) {
+                const loc = decodePortalLocation(meta.portalCoupler.portalLocation);
+                if (loc) {
+                  const km = haversineKm(userLocation.lat, userLocation.lon, loc.lat, loc.lon);
+                  const mi = km * 0.621371;
+                  infoHtml += (infoHtml ? '<br>' : '') + `Distance: ${km.toFixed(2)}km / ${mi.toFixed(2)} miles`;
+                }
+              }
+              small.innerHTML = infoHtml;
+
+              const tags = document.createElement('div'); tags.className='tags';
+              // No tags for powerups or mods
+              // (left intentionally empty)
+
+              metaDiv.appendChild(small); metaDiv.appendChild(tags);
+              card.appendChild(thumb); card.appendChild(metaDiv);
+            } else {
+              card.appendChild(thumb);
+            }
+            // Keys-only search: filter by card text content
+            if (t === 'Keys' && keySearchQuery) {
+              const matches = card.textContent.toLowerCase().includes(keySearchQuery);
+              if (!matches) {
+                // Skip appending this card when it doesn't match
+                continue;
+              }
+            }
+            section.appendChild(card);
+            if (t === 'Keys') keysAppended++;
+          }
+
+          if (displayedEntries.length > 0) itemsEl.appendChild(section);
+          // Count shown groups across sections
+          if (t === 'Keys') {
+            shownCount += (keySearchQuery ? keysAppended : displayedEntries.length);
+          } else {
+            shownCount += displayedEntries.length;
+          }
         }
-
-        const metaDiv = document.createElement('div'); metaDiv.className='meta';
-        const titleEl = document.createElement('h3');
-        titleEl.textContent = title;
-
-        // Add count badge if there are duplicates
-        if(items.length > 1){
-          const countBadge = document.createElement('span');
-          countBadge.textContent = ` ×${items.length}`;
-          countBadge.style.cssText = 'background: var(--accent); color: white; padding: 2px 6px; border-radius: 999px; font-size: 11px; margin-left: 8px;';
-          titleEl.appendChild(countBadge);
-        }
-
-        const small = document.createElement('div'); small.className='small';
-        const infoItems = [];
-
-        // Add address for portal keys
-        if(meta.portalCoupler && meta.portalCoupler.portalAddress) {
-          infoItems.push(meta.portalCoupler.portalAddress);
-        }
-
-        // Add storage location info if item is in a container
-        if(meta._storedIn) {
-          infoItems.push(`📦 Stored in ${meta._storedIn.containerType.toLowerCase()}`);
-        }
-
-        small.innerHTML = infoItems.filter(Boolean).join(' · ');
-
-        const tags = document.createElement('div'); tags.className='tags';
-        if(meta.modResource && meta.modResource.displayName){ tags.appendChild(makeTag(meta.modResource.displayName)); }
-        if(meta.timedPowerupResource && meta.timedPowerupResource.designation){ tags.appendChild(makeTag(meta.timedPowerupResource.designation)); }
-        if(meta.playerPowerupResource && meta.playerPowerupResource.playerPowerupEnum){ tags.appendChild(makeTag(meta.playerPowerupResource.playerPowerupEnum)); }
-
-        metaDiv.appendChild(titleEl); metaDiv.appendChild(small); metaDiv.appendChild(tags);
-
-        card.appendChild(thumb); card.appendChild(metaDiv);
-        itemsEl.appendChild(card);
-      }
+        countEl.textContent = shownCount;
+        summaryEl.textContent = '';
     }
 
     function makeTag(text){ const s=document.createElement('span'); s.className='tag'; s.textContent=text; return s; }
+    function abbreviateRarity(r){
+      if(r === 'VERY_RARE') return 'VR';
+      if(r === 'RARE') return 'R';
+      if(r === 'COMMON') return 'C';
+      return r || '';
+    }
+    function getModDiamondConfig(meta){
+      const mr = meta && meta.modResource;
+      if(!mr) return null;
+      const name = (mr.displayName||'').toLowerCase();
+      const isAegisAxa = mr.resourceType === 'EXTRA_SHIELD' && (name.includes('aegis') || name.includes('axa'));
+      if (isAegisAxa) return {count:4,color:'pink'};
+      const rar = mr.rarity;
+      if (rar === 'VERY_RARE') return {count:3,color:'pink'};
+      if (rar === 'RARE') return {count:2,color:'purple'};
+      if (rar === 'COMMON') return {count:1,color:'teal'};
+      return null;
+    }
+    function isCapsuled(meta){
+      const ct = meta && meta._storedIn && meta._storedIn.containerType;
+      if(!ct) return false;
+      return ['CAPSULE','KEY_CAPSULE','KINETIC_CAPSULE','QUANTUM_CAPSULE','INTEREST_CAPSULE'].includes(ct);
+    }
     function displayTitle(id,meta){
-      if(meta.modResource && meta.modResource.displayName) {
-        const rarity = meta.modResource.rarity || '';
-        return rarity ? `${meta.modResource.displayName} (${rarity})` : meta.modResource.displayName;
+      if(meta.modResource) {
+        const rarity = abbreviateRarity(meta.modResource.rarity || '');
+        return rarity || '';
       }
       if(meta.portalCoupler && meta.portalCoupler.portalTitle) return meta.portalCoupler.portalTitle;
       if(meta.storyItem && meta.storyItem.shortDescription) return meta.storyItem.shortDescription;
@@ -435,12 +745,24 @@
         if (meta.resourceWithLevels.resourceType === 'EMITTER_A') {
           return 'L' + (meta.resourceWithLevels.level || '');
         }
+        // For power cubes, display only level (e.g., "L8")
+        if (meta.resourceWithLevels.resourceType === 'POWER_CUBE') {
+          return 'L' + (meta.resourceWithLevels.level || '');
+        }
+        // For bursters and ultra strikes, display only level
+        if (meta.resourceWithLevels.resourceType === 'EMP_BURSTER' || meta.resourceWithLevels.resourceType === 'ULTRA_STRIKE') {
+          return 'L' + (meta.resourceWithLevels.level || '');
+        }
         return meta.resourceWithLevels.resourceType + ' L' + (meta.resourceWithLevels.level||'');
       }
       if(meta.resource && meta.resource.resourceType) {
         // Special handling for flip cards to show type
         if(meta.resource.resourceType === 'FLIP_CARD' && meta.flipCard && meta.flipCard.flipCardType) {
-          return `${meta.resource.resourceType} (${meta.flipCard.flipCardType})`;
+          return meta.flipCard.flipCardType;
+        }
+        // Hyper (Boosted Power Cube)
+        if (meta.resource.resourceType === 'BOOSTED_POWER_CUBE') {
+          return 'Hyper';
         }
         // Powerups: show designation/enum as title so each groups separately
         if (meta.resource.resourceType === 'PORTAL_POWERUP' && meta.timedPowerupResource && meta.timedPowerupResource.designation) {
@@ -452,6 +774,51 @@
         return meta.resource.resourceType;
       }
       return id;
+    }
+
+    function formatLocalTs(ms){
+      const n = Number(ms);
+      if(!n || !isFinite(n)) return '';
+      const d = new Date(n);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleString(undefined, {
+        year: 'numeric', month: 'short', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false,
+        timeZoneName: 'short'
+      });
+    }
+
+    function decodePortalLocation(s){
+      if(!s || typeof s !== 'string' || !s.includes(',')) return null;
+      const [latHex, lonHex] = s.split(',');
+      const toSigned = (n)=> (n & 0x80000000) ? n - 0x100000000 : n;
+      const latE6 = toSigned(parseInt(latHex,16));
+      const lonE6 = toSigned(parseInt(lonHex,16));
+      if(!isFinite(latE6) || !isFinite(lonE6)) return null;
+      return { lat: latE6/1e6, lon: lonE6/1e6 };
+    }
+
+    function haversineKm(lat1, lon1, lat2, lon2){
+      const R = 6371; // km
+      const toRad = d => d * Math.PI/180;
+      const dLat = toRad(lat2-lat1);
+      const dLon = toRad(lon2-lon1);
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function initGeolocation(){
+      try{
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition((pos)=>{
+            userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+            if (expandedData) render(expandedData);
+          }, (err)=>{
+            console.warn('Geolocation unavailable:', err);
+          }, { enableHighAccuracy: true, maximumAge: 600000, timeout: 10000 });
+        }
+      }catch(e){ console.warn('Geolocation init failed:', e); }
     }
 
     function findImage(meta){
@@ -515,6 +882,22 @@
             return 'assets/images/ITO_EN_Transmuter_minus.webp';
           default:
             break;
+        }
+      }
+
+      // Capsules
+      if (meta.resource && meta.resource.resourceType) {
+        const rt = meta.resource.resourceType;
+        const rar = meta.resource.resourceRarity || '';
+        if (rt === 'CAPSULE') {
+          return 'assets/images/Capsule_Prime.webp';
+        }
+        if (rt === 'KEY_CAPSULE') {
+          return 'assets/images/Prime-White-Key_Locker.webp';
+        }
+        if (rt === 'KINETIC_CAPSULE') {
+          if (rar === 'RARE') return 'assets/images/Prime-Rare_Kinetic_Capsule.webp';
+          return 'assets/images/Prime-Kinetic_Capsule.webp';
         }
       }
 
@@ -584,14 +967,23 @@
 
     // events
     document.getElementById('refresh').addEventListener('click', loadFromUrl);
-    document.getElementById('clear').addEventListener('click', ()=>{searchInput.value='';filterType.value='';filterRarity.value=''; if(expandedData) render(expandedData);});
-    searchInput.addEventListener('input', ()=>{ if(expandedData) render(expandedData); });
-    filterType.addEventListener('change', ()=>{ if(expandedData) render(expandedData); });
+    document.getElementById('clear').addEventListener('click', ()=>{
+      keySearchQuery = '';
+      const ks = document.getElementById('keySearch');
+      if (ks) ks.value = '';
+      filterRarity.value='';
+      if(expandedData) render(expandedData);
+    });
+    // Removed resource type dropdown and its change handler
     filterRarity.addEventListener('change', ()=>{ if(expandedData) render(expandedData); });
+    document.getElementById('hideCapsuled').addEventListener('change', ()=>{ if(expandedData) render(expandedData); });
 
 
     // try load automatically
+    initGeolocation();
     loadFromUrl();
   </script>
 </body>
 </html>
+    // User geolocation for distance calculations
+    let userLocation = null; // {lat, lon}
