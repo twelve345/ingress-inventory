@@ -9,7 +9,7 @@
 
 **🌐 [Try it now →](https://twelve345.github.io/ingress-inventory)**
 
-![Ingress Inventory Viewer Screenshot](https://raw.githubusercontent.com/twelve345/ingress-inventory/main/assets/images/screenshot.png)
+![Ingress Inventory Viewer Screenshot](https://raw.githubusercontent.com/twelve345/ingress-inventory/main/assets/images/ingress-inventory-screenshot.png)
 
 ---
 
