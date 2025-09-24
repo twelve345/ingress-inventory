@@ -20,7 +20,8 @@
 ### 🌟 Perfect for Portfolio Demonstrations
 
 This project showcases:
-- **Frontend Development Excellence** - Modern JavaScript, responsive CSS, user-centric design
+- **Frontend Development Excellence** - Modular JavaScript architecture, responsive CSS, user-centric design
+- **Software Architecture** - Clean separation of concerns, maintainable code structure, professional patterns
 - **Data Processing & Visualization** - Complex JSON parsing, nested data structures, real-time filtering
 - **User Experience Design** - Intuitive interfaces, drag-and-drop functionality, state management
 - **Problem-Solving Skills** - Data sanitization, performance optimization, cross-browser compatibility
@@ -63,11 +64,12 @@ This project showcases:
 | Category | Technologies |
 |----------|-------------|
 | **Frontend** | HTML5, CSS3, Vanilla JavaScript (ES6+) |
+| **Architecture** | Modular design, Separation of concerns, Event-driven patterns |
 | **Styling** | CSS Grid, Flexbox, Custom Properties, Responsive Design |
 | **APIs** | File API, Geolocation API, Drag & Drop API |
 | **Data Processing** | JSON parsing, Regular expressions, Array methods |
+| **State Management** | Centralized application state, Reactive updates |
 | **Deployment** | GitHub Pages (Static hosting) |
-| **Architecture** | Single Page Application (SPA), Client-side rendering |
 
 ---
 
@@ -106,9 +108,18 @@ npx serve .
 ### Project Structure
 ```
 ingress-inventory/
-├── index.html             # Main application
+├── index.html              # Application shell and entry point
+├── css/
+│   └── styles.css         # Centralized styling with design system
+├── js/
+│   ├── constants.js       # Configuration constants and mappings
+│   ├── utils.js           # Pure utility functions
+│   ├── data.js            # Data processing and transformation
+│   ├── ui.js              # DOM manipulation and rendering
+│   └── app.js             # Application coordination and state management
 ├── assets/
 │   └── images/            # Game assets and placeholders
+├── ARCHITECTURE.md        # Technical architecture documentation
 ├── README.md              # This file
 └── LICENSE                # MIT License
 ```
@@ -117,23 +128,34 @@ ingress-inventory/
 
 ## 🏗️ Technical Architecture
 
-### Data Flow
+### Modular Architecture
+The application follows modern JavaScript architecture principles with **clean separation of concerns**:
+
+- **`constants.js`** - Configuration layer with centralized constants and mappings
+- **`utils.js`** - Pure utility functions for data transformation and calculations
+- **`data.js`** - Business logic for data processing, filtering, and grouping
+- **`ui.js`** - Presentation layer handling DOM manipulation and rendering
+- **`app.js`** - Application layer coordinating modules and managing state
+
+### Data Flow Pipeline
 1. **File Upload** → Client-side file reading via FileReader API
 2. **Data Sanitization** → Remove invalid control characters
 3. **JSON Parsing** → Parse and validate data structure
 4. **Container Extraction** → Recursively extract nested items
-5. **State Management** → Update application state and UI
-6. **Rendering** → Dynamic DOM manipulation with filtering/sorting
+5. **State Management** → Update centralized application state
+6. **Rendering** → Event-driven UI updates with filtering/sorting
 
-### Key Algorithms
-- **Haversine Distance Calculation** - Accurate geospatial measurements
-- **Hex Coordinate Decoding** - Convert Ingress location format to standard lat/lng
-- **Recursive Container Processing** - Handle nested inventory structures
-- **Dynamic Grouping** - Real-time item categorization and aggregation
+### Key Design Patterns
+- **Module Pattern** - Clean encapsulation with defined interfaces
+- **Event-Driven Architecture** - Loose coupling between UI and business logic
+- **Pipeline Processing** - Composable data transformation stages
+- **State Management** - Centralized state with reactive updates
+- **Error Boundaries** - Graceful degradation with comprehensive error handling
 
 ### Performance Optimizations
+- **Debounced Search** - Prevents excessive re-rendering during user input
+- **Efficient Sorting** - Optimized algorithms per item type
 - **Event Delegation** - Efficient DOM event handling
-- **Lazy Rendering** - On-demand UI updates
 - **Memory Management** - Proper cleanup of large datasets
 - **CSS Hardware Acceleration** - Smooth animations and transitions
 
@@ -218,15 +240,20 @@ This project is open source and available under the [MIT License](LICENSE).
 
 This project demonstrates proficiency in:
 
-✅ **Frontend Development** - Modern JavaScript, CSS Grid/Flexbox, responsive design
-✅ **Data Processing** - JSON manipulation, complex algorithms, error handling
-✅ **User Experience** - Intuitive interfaces, drag-and-drop, state management
-✅ **Performance** - Efficient algorithms, memory management, optimization
-✅ **Architecture** - Clean code, separation of concerns, scalable patterns
-✅ **Problem Solving** - Real-world application, user-focused solutions
+✅ **Software Architecture** - Modular design, separation of concerns, maintainable code structure
+✅ **Frontend Development** - Modern JavaScript (ES6+), CSS Grid/Flexbox, responsive design
+✅ **Data Processing** - JSON manipulation, complex algorithms, robust error handling
+✅ **User Experience** - Intuitive interfaces, drag-and-drop, seamless state management
+✅ **Performance Engineering** - Efficient algorithms, memory management, optimization techniques
+✅ **Code Quality** - Clean code principles, comprehensive documentation, professional practices
+✅ **Problem Solving** - Real-world application, user-focused solutions, technical challenges
 
 ---
 
-**Built with ❤️ for the Ingress community | Designed to showcase modern web development skills**
+**Built with ❤️ for the Ingress community | Engineered to showcase professional development practices**
 
-*This project serves both as a practical tool for Ingress players and a demonstration of advanced frontend development capabilities for potential employers.*
+*This project serves as both a practical tool for Ingress players and a demonstration of production-quality frontend architecture and advanced JavaScript development skills.*
+
+### 📖 Technical Documentation
+
+For detailed technical information about the application architecture, design decisions, and implementation details, see [ARCHITECTURE.md](ARCHITECTURE.md).
