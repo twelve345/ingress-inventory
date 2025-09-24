@@ -7,7 +7,7 @@
   <link rel="icon" href="data:,">
   <style>
     :root{--bg:#15243a;--card:#0f1b2e;--muted:#94a3b8;--accent:#60a5fa}
-    body{font-family:Inter,Segoe UI,Roboto,"Helvetica Neue",Arial;background:linear-gradient(180deg,#0b1f3f 0%,#0a1b36 100%);color:#e6eef8;margin:0;padding:20px}
+    body{font-family:Inter,Segoe UI,Roboto,"Helvetica Neue",Arial;background:linear-gradient(180deg,#0b1f3f 0%,#0a1b36 100%);background-attachment:fixed;color:#e6eef8;margin:0;padding:20px;min-height:100vh}
     header{display:flex;gap:12px;align-items:center;margin-bottom:18px}
     h1{margin:0;font-size:20px}
     .title-pill{display:inline-flex;align-items:center;justify-content:center;margin-left:8px;width:52px;height:52px;border-radius:50%;background:var(--accent);color:#fff;font-size:18px;font-weight:600}
@@ -19,7 +19,7 @@
     .sort-btn{margin-left:8px;padding:6px 10px;font-size:13px;border-radius:8px;border:1px solid #16324a;background:rgba(255,255,255,0.06);color:var(--muted);cursor:pointer}
     .sort-btn.active{background:linear-gradient(180deg,var(--accent),#3b82f6);color:#fff;border-color:transparent}
     .sort-btn:hover{filter:brightness(1.05)}
-    .summary{margin-top:8px;color:var(--muted);font-size:13px}
+    .summary{margin-top:8px;color:var(--muted);font-size:16px;font-weight:500}
     #items{display:block;margin-top:16px}
     .card{background:var(--card);border:1px solid rgba(255,255,255,0.03);padding:12px;border-radius:10px;display:flex;gap:12px}
     .card.compact{width:max-content;padding:6px;gap:0;justify-content:flex-start;margin:0}
@@ -34,6 +34,7 @@
     .diamond.pink{background:#ec4899}
     .diamond.purple{background:#8b5cf6}
     .diamond.teal{background:#14b8a6}
+    .capsule-icon{position:absolute;top:6px;right:6px;width:20px;height:20px;background:rgba(0,0,0,0.8);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;box-shadow:0 2px 4px rgba(0,0,0,0.3)}
     .meta{flex:1;min-width:0}
     .meta h3{margin:0 0 6px 0;font-size:15px}
     .meta .small{color:var(--muted);font-size:13px}
@@ -43,6 +44,20 @@
     pre{white-space:pre-wrap;background:rgba(255,255,255,0.02);padding:8px;border-radius:6px;overflow:auto}
     .controls > label{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:13px}
     footer{margin-top:18px;color:var(--muted);font-size:13px}
+    /* Upload state */
+    .upload-container{display:flex;align-items:center;justify-content:center;min-height:70vh;padding:40px}
+    .upload-card{background:var(--card);border:2px dashed var(--accent);border-radius:16px;padding:60px 40px;text-align:center;max-width:500px;width:100%}
+    .upload-card h2{margin:0 0 16px 0;color:var(--accent);font-size:24px}
+    .upload-card p{margin:0 0 32px 0;color:var(--muted);font-size:16px;line-height:1.5}
+    .upload-card .upload-btn{background:linear-gradient(180deg,var(--accent),#3b82f6);color:#fff;border:none;padding:16px 32px;border-radius:8px;font-size:16px;font-weight:600;cursor:pointer;margin-bottom:16px}
+    .upload-card .upload-btn:hover{filter:brightness(1.1)}
+    .upload-card .drag-hint{color:var(--muted);font-size:14px;margin-top:16px}
+    /* Hide inventory elements when no data */
+    .inventory-hidden{display:none !important}
+    /* Drag and drop overlay */
+    .drag-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(96,165,250,0.1);border:3px dashed var(--accent);display:none;z-index:9999;pointer-events:none}
+    .drag-overlay.active{display:flex;align-items:center;justify-content:center}
+    .drag-overlay-text{background:var(--accent);color:#fff;padding:20px 40px;border-radius:10px;font-size:18px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,0.3)}
     .type-section{margin-top:24px;display:inline-block;vertical-align:top;width:340px;margin-right:12px}
     /* Widen Keys column by 50% (340 -> 510) */
     .type-section.type-keys{width:510px}
@@ -60,33 +75,48 @@
 </head>
 <body>
   <header>
-    <h1>Ingress Inventory Viewer</h1><span id="totalPill" class="title-pill">0</span>
-    <div class="controls">
+    <h1>Ingress Inventory Viewer</h1><span id="totalPill" class="title-pill inventory-hidden">0</span>
+    <div class="controls inventory-hidden">
       <select id="filterRarity"><option value="">All rarities</option></select>
       <label><input id="hideCapsuled" type="checkbox" checked /> Hide Capsuled Items</label>
-      <button id="refresh">Load inventory.json</button>
-      <button id="clear">Clear filters</button>
+      <button id="clear">Clear data</button>
     </div>
   </header>
 
+  <!-- Upload interface (shown when no data) -->
+  <div class="upload-container" id="uploadContainer">
+    <div class="upload-card">
+      <h2>Upload Your Inventory</h2>
+      <p>Upload your inventory.json file exported from the Ingress IITC My Keys plugin to view and organize your items</p>
+      <input type="file" id="fileInput" accept=".json" style="display: none;" />
+      <button class="upload-btn" id="uploadBtn">Choose json file</button>
+      <div class="drag-hint">Or drag and drop your file anywhere on this page</div>
+    </div>
+  </div>
 
+  <!-- Inventory interface (hidden initially) -->
+  <div class="summary inventory-hidden" id="summary"></div>
 
-  <div class="summary" id="summary">Loading inventory...</div>
+  <div id="items" class="inventory-hidden"></div>
 
-  <div id="items"></div>
-
-  <footer>Items shown: <span id="count">0</span> · Total raw items: <span id="total">0</span></footer>
+  <!-- Drag and drop overlay -->
+  <div class="drag-overlay" id="dragOverlay">
+    <div class="drag-overlay-text">Drop inventory.json file here</div>
+  </div>
 
   <script>
     let rawData = null;
     let expandedData = null;
+    let fileInfo = null; // Store file name and timestamp
     const itemsEl = document.getElementById('items');
     const summaryEl = document.getElementById('summary');
-    const countEl = document.getElementById('count');
-    const totalEl = document.getElementById('total');
     const titleTotal = document.getElementById('totalPill');
     const filterRarity = document.getElementById('filterRarity');
     const hideCapsuledInput = document.getElementById('hideCapsuled');
+    const fileInput = document.getElementById('fileInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const dragOverlay = document.getElementById('dragOverlay');
+    const uploadContainer = document.getElementById('uploadContainer');
     // Keys-only search query and focus restoration
     let keySearchQuery = '';
     let keySearchShouldRefocus = false;
@@ -97,38 +127,123 @@
     let keyCountDir = 'asc';   // count: 'asc' (least→most) | 'desc' (most→least)
     let keyTimeDir = 'asc';    // time: 'asc' (Oldest→Youngest) | 'desc' (Youngest→Oldest)
     let keyDistanceDir = 'asc';// distance: 'asc' (Closest→Farthest) | 'desc' (Farthest→Closest)
+    // User geolocation for distance calculations
+    let userLocation = null; // {lat, lon}
 
-    async function loadFromUrl(){
-      console.log('🔄 loadFromUrl() called');
-      console.log('📍 Current location:', location.href);
-      console.log('🌐 Protocol:', location.protocol);
+    function showUploadInterface() {
+      uploadContainer.style.display = 'flex';
+      document.querySelectorAll('.inventory-hidden').forEach(el => {
+        el.classList.add('inventory-hidden');
+      });
+      // Hide the total pill when no data
+      if (titleTotal) titleTotal.style.display = 'none';
+    }
 
-      summaryEl.textContent = 'Loading inventory.json...';
+    function showInventoryInterface() {
+      uploadContainer.style.display = 'none';
+      document.querySelectorAll('.inventory-hidden').forEach(el => {
+        el.classList.remove('inventory-hidden');
+      });
+      // Show the total pill when data is loaded
+      if (titleTotal) titleTotal.style.display = 'inline-flex';
+    }
 
-      try{
-        console.log('🔄 Starting fetch request for inventory.json...');
-        const res = await fetch('inventory.json', {cache: 'no-store'});
-        console.log('📡 Fetch response received:', res.status, res.statusText);
+    function clearInventoryData() {
+      rawData = null;
+      expandedData = null;
+      fileInfo = null;
+      itemsEl.innerHTML = '';
+      if (titleTotal) titleTotal.textContent = '0';
+      summaryEl.textContent = '';
+      showUploadInterface();
+    }
 
-        if(!res.ok) {
-          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-        }
+    function cleanJsonString(jsonString) {
+      // Remove control characters (ASCII 0-31) except for valid JSON whitespace
+      // Valid JSON whitespace: space (32), tab (9), newline (10), carriage return (13)
+      const validControlChars = new Set([9, 10, 13]); // tab, newline, carriage return
+      let cleaned = '';
+      let removedCount = 0;
 
-        console.log('📥 Parsing JSON response...');
-        const j = await res.json();
-        console.log('✅ JSON parsed successfully, calling setData...');
-        setData(j);
-        summaryEl.textContent = 'Inventory loaded successfully!';
-      }catch(e){
-        console.error('❌ Failed to load inventory.json:', e);
-        summaryEl.textContent = `Failed to load inventory.json: ${e.message}`;
-
-        // Additional debugging for file protocol
-        if (location.protocol === 'file:') {
-          console.warn('🚫 File protocol detected - this may be the issue');
-          summaryEl.textContent += ' (Note: file:// protocol may block local file access)';
+      for (let i = 0; i < jsonString.length; i++) {
+        const charCode = jsonString.charCodeAt(i);
+        // Keep printable characters and valid whitespace
+        if (charCode >= 32 || validControlChars.has(charCode)) {
+          cleaned += jsonString[i];
+        } else {
+          removedCount++;
         }
       }
+
+      console.log(`🧹 Cleaned JSON: removed ${removedCount} invalid control characters`);
+      return cleaned;
+    }
+
+    async function handleFileUpload() {
+      const file = fileInput.files[0];
+      if (!file) {
+        summaryEl.textContent = 'No file selected.';
+        return;
+      }
+
+      console.log('📁 File selected:', file.name, 'Size:', file.size, 'bytes');
+      summaryEl.textContent = 'Reading file...';
+
+      try {
+        const text = await file.text();
+        console.log('📖 File read successfully, length:', text.length);
+
+        summaryEl.textContent = 'Cleaning and validating JSON...';
+
+        // Clean the JSON string
+        const cleanedJson = cleanJsonString(text);
+
+        // Try to parse the JSON
+        let data;
+        try {
+          data = JSON.parse(cleanedJson);
+          console.log('✅ JSON parsed successfully');
+        } catch (parseError) {
+          console.error('❌ JSON parsing failed:', parseError);
+          summaryEl.textContent = `Invalid JSON file: ${parseError.message}`;
+          return;
+        }
+
+        // Validate the data structure
+        if (!data || (!data.result && !Array.isArray(data))) {
+          summaryEl.textContent = 'Invalid inventory file format. Expected JSON with "result" array.';
+          return;
+        }
+
+        console.log('🎯 Loading data into inventory viewer...');
+        setData(data);
+        showInventoryInterface();
+
+        // Format and store the file timestamp
+        const fileDate = new Date(file.lastModified);
+        const formattedDate = fileDate.toLocaleString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        });
+
+        fileInfo = `Loaded: ${file.name} - Last modified: ${formattedDate}`;
+        summaryEl.textContent = fileInfo;
+
+        // Clear the file input
+        fileInput.value = '';
+
+      } catch (error) {
+        console.error('❌ File upload failed:', error);
+        summaryEl.textContent = `Failed to read file: ${error.message}`;
+      }
+    }
+
+    function triggerFileUpload() {
+      fileInput.click();
     }
 
     function extractNestedItems(arr) {
@@ -228,7 +343,6 @@
       // Extract nested items from containers and store globally
       expandedData = extractNestedItems(arr);
 
-      totalEl.textContent = expandedData.length;
       // Exclude keys inside key lockers (KEY_CAPSULE) from the title total pill
       try {
         const keyLockerKeyCount = expandedData.reduce((acc, it) => {
@@ -602,8 +716,25 @@
             if(imgUrl){
               const img = document.createElement('img'); img.src = imgUrl; img.alt = id; thumb.appendChild(img);
             }else{
-              thumb.textContent = id.slice(0,6);
-              thumb.style.color='var(--muted)'; thumb.style.fontSize='13px';
+              // Use placeholder image for keys, fallback text for other items
+              const isKey = !!(meta.portalCoupler && meta.portalCoupler.portalTitle);
+              if(isKey) {
+                const img = document.createElement('img');
+                img.src = 'assets/images/no_photo.png';
+                img.alt = 'No photo available';
+                thumb.appendChild(img);
+              } else {
+                thumb.textContent = id.slice(0,6);
+                thumb.style.color='var(--muted)'; thumb.style.fontSize='13px';
+              }
+            }
+
+            // Add capsule icon if item is stored in a capsule
+            if(meta._storedIn) {
+              const capsuleIcon = document.createElement('div');
+              capsuleIcon.className = 'capsule-icon';
+              capsuleIcon.textContent = '📦';
+              thumb.appendChild(capsuleIcon);
             }
 
             const isPowerup = groupVal.gmeta.displayType === 'Powerups';
@@ -631,7 +762,7 @@
               const cfg = getModDiamondConfig(meta);
               if (cfg){
                 const strip = document.createElement('div'); strip.className = 'diamond-strip';
-                for(let i=0;i<cfg.count;i++){ const d=document.createElement('span'); d.className = 'diamond ' + cfg.color; strip.appendChild(d);} 
+                for(let i=0;i<cfg.count;i++){ const d=document.createElement('span'); d.className = 'diamond ' + cfg.color; strip.appendChild(d);}
                 thumb.appendChild(strip);
               }
             }
@@ -654,7 +785,6 @@
               const small = document.createElement('div'); small.className='small';
               const infoItems = [];
               if(meta.portalCoupler && meta.portalCoupler.portalAddress) { infoItems.push(meta.portalCoupler.portalAddress); }
-              if(meta._storedIn) { infoItems.push(`📦 Stored in ${meta._storedIn.containerType.toLowerCase()}`); }
               let lastTs = 0;
               if (t === 'Keys') {
                 try {
@@ -705,8 +835,10 @@
             shownCount += displayedEntries.length;
           }
         }
-        countEl.textContent = shownCount;
-        summaryEl.textContent = '';
+        // Preserve file info if it exists
+        if (fileInfo) {
+          summaryEl.textContent = fileInfo;
+        }
     }
 
     function makeTag(text){ const s=document.createElement('span'); s.className='tag'; s.textContent=text; return s; }
@@ -966,24 +1098,65 @@
     }
 
     // events
-    document.getElementById('refresh').addEventListener('click', loadFromUrl);
+    uploadBtn.addEventListener('click', triggerFileUpload);
+    fileInput.addEventListener('change', handleFileUpload);
+
+    // Drag and drop support
+    let dragCounter = 0;
+
+    document.body.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter++;
+      if (e.dataTransfer.types.includes('Files')) {
+        dragOverlay.classList.add('active');
+      }
+    });
+
+    document.body.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragOverlay.classList.remove('active');
+        dragCounter = 0;
+      }
+    });
+
+    document.body.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+
+    document.body.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      dragOverlay.classList.remove('active');
+
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        const file = files[0];
+        if (file.type === 'application/json' || file.name.endsWith('.json')) {
+          fileInput.files = files;
+          handleFileUpload();
+        } else {
+          summaryEl.textContent = 'Please drop a JSON file.';
+        }
+      }
+    });
+
     document.getElementById('clear').addEventListener('click', ()=>{
+      clearInventoryData();
       keySearchQuery = '';
       const ks = document.getElementById('keySearch');
       if (ks) ks.value = '';
       filterRarity.value='';
-      if(expandedData) render(expandedData);
     });
     // Removed resource type dropdown and its change handler
     filterRarity.addEventListener('change', ()=>{ if(expandedData) render(expandedData); });
     document.getElementById('hideCapsuled').addEventListener('change', ()=>{ if(expandedData) render(expandedData); });
 
 
-    // try load automatically
+    // Initialize geolocation for distance calculations
     initGeolocation();
-    loadFromUrl();
   </script>
 </body>
 </html>
-    // User geolocation for distance calculations
-    let userLocation = null; // {lat, lon}
