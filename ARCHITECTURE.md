@@ -1,272 +1,133 @@
-# Ingress Inventory Viewer - Architecture Documentation
+# Architecture Notes
 
 ## Overview
 
-The Ingress Inventory Viewer is a client-side web application built with modern JavaScript architecture principles. The application processes inventory exports from the Ingress IITC "My Keys" plugin and provides an interactive interface for viewing, searching, and analyzing game items.
+This is a client-side web app for viewing Ingress inventory data. I split it into modules to keep things organized as the codebase grew from a single HTML file to something more maintainable.
 
-## Architecture Principles
+## Why modules?
 
-### 1. **Modular Design**
-- **Separation of Concerns**: Each module has a single, well-defined responsibility
-- **Loose Coupling**: Modules interact through well-defined interfaces
-- **High Cohesion**: Related functionality is grouped together
+Started as one big HTML file with everything inline. After adding features like search, sorting, distance calculations, and container extraction, it became clear that organization was needed. Breaking it into logical pieces made it much easier to work with.
 
-### 2. **Client-Side Processing**
-- **No Server Dependencies**: Runs entirely in the browser
-- **Privacy First**: No data transmission to external servers
-- **Offline Capable**: Works without internet after initial load
+## Design decisions
 
-### 3. **Progressive Enhancement**
-- **Graceful Degradation**: Core functionality works even if advanced features fail
-- **Feature Detection**: Safe handling of browser API availability
+**Client-side only:** Everything runs in the browser. No servers, no data uploads, no tracking. Your inventory data stays on your device.
 
-## Module Structure
+**Vanilla JavaScript:** No frameworks. Keeps things simple and avoids the overhead of learning/maintaining framework-specific patterns.
+
+**Progressive enhancement:** Core functionality works even if geolocation or other optional features aren't available.
+
+## File organization
 
 ```
-ingress-inventory/
-├── index.html              # Application shell and entry point
-├── css/
-│   └── styles.css         # Centralized styling with CSS custom properties
-├── js/
-│   ├── constants.js       # Configuration constants and mappings
-│   ├── utils.js           # Pure utility functions
-│   ├── data.js            # Data processing and transformation
-│   ├── ui.js              # DOM manipulation and rendering
-│   └── app.js             # Application coordination and state management
-└── assets/
-    └── images/            # Game asset images and placeholders
+js/
+├── constants.js  # Item types, rarity mappings, asset paths
+├── utils.js      # Helper functions (distance calc, JSON cleaning, etc)
+├── data.js       # Processing inventory data, extracting from containers
+├── ui.js         # Creating and updating the interface
+└── app.js        # Main application, event handling, state
 ```
 
-## Module Responsibilities
+**constants.js** - All the magic values in one place. Item type mappings, sort orders, image paths, etc. Started putting these in variables when I realized I was copying the same arrays around.
 
-### `constants.js` - Configuration Layer
-**Purpose**: Centralized configuration and constants to eliminate magic values
+**utils.js** - Pure functions that don't depend on anything else. Distance calculations, timestamp formatting, JSON cleaning. Easier to reason about when they're isolated.
 
-**Key Features**:
-- Item type classifications and mappings
-- Rarity system definitions
-- Asset path templates
-- UI configuration values
-- Sort ordering specifications
+**data.js** - The tricky part. IITC exports have a nested structure where items can be stored inside containers, which can be inside other containers. This module handles flattening that structure and grouping items for display.
 
-**Exports**: `CONSTANTS` global object with categorized configuration
+**ui.js** - DOM manipulation and rendering. Takes processed data and creates the interface. Handles things like creating item cards, updating counts, managing the upload/inventory state transitions.
 
-### `utils.js` - Utility Layer
-**Purpose**: Pure functions for data transformation and calculations
+**app.js** - Ties everything together. Handles file uploads, coordinates between modules, manages application state. Event handling and user interactions.
 
-**Key Functions**:
-- `cleanJsonString()` - Sanitizes invalid control characters from JSON
-- `formatLocalTs()` - Timestamp formatting with locale support
-- `decodePortalLocation()` - Hex coordinate conversion to lat/lng
-- `haversineKm()` - Geographic distance calculations
-- `getDisplayType()` - Resource type to display category mapping
-- `displayTitle()` - Item title generation logic
+## Data flow
 
-**Design**: All functions are pure (no side effects) and testable in isolation
+1. **File upload:** User drops JSON file, app reads it with FileReader
+2. **Cleaning:** Remove invalid control characters that break JSON.parse()
+3. **Container extraction:** Walk through the data and extract items from capsules
+4. **Grouping:** Organize items by type and title for display
+5. **Rendering:** Create DOM elements for each item group
+6. **Filtering/sorting:** User interactions trigger re-processing of the data
 
-### `data.js` - Data Processing Layer
-**Purpose**: Handles complex data transformation and business logic
+## State management
 
-**Key Functions**:
-- `extractNestedItems()` - Recursively unpacks container items
-- `processInventoryData()` - Main data processing pipeline
-- `filterItems()` - Applies user-selected filters
-- `groupItems()` - Groups items by type and title for rendering
-- `sortTypeGroups()` - Type-specific sorting algorithms
+Keeps application state in a single object in app.js:
 
-**Architecture**: Pipeline design with clear input/output contracts
-
-### `ui.js` - Presentation Layer
-**Purpose**: DOM manipulation, rendering, and user interface management
-
-**Key Functions**:
-- `renderInventory()` - Main rendering orchestrator
-- `createItemCard()` - Individual card generation
-- `showUploadInterface()` / `showInventoryInterface()` - State transitions
-- `populateRarityFilter()` - Dynamic filter population
-- `findImage()` - Asset resolution logic
-
-**Design**: Declarative rendering approach with reusable UI components
-
-### `app.js` - Application Layer
-**Purpose**: Application initialization, state management, and module coordination
-
-**Key Responsibilities**:
-- Application lifecycle management
-- Event handling and delegation
-- State management and persistence
-- Module coordination
-- Error handling and user feedback
-
-**Architecture**: Central coordinator with minimal business logic
-
-## Data Flow Architecture
-
-### 1. **File Upload Pipeline**
-```
-User Upload → File Reading → JSON Cleaning → Parsing → Validation → Processing
-```
-
-### 2. **Data Processing Pipeline**
-```
-Raw JSON → Container Extraction → Item Expansion → Filter Population → Initial Render
-```
-
-### 3. **User Interaction Flow**
-```
-User Input → State Update → Data Filtering → Grouping → Sorting → Re-render
-```
-
-### 4. **Rendering Pipeline**
-```
-Grouped Data → Type Sections → Sort Applications → Card Generation → DOM Updates
-```
-
-## State Management
-
-### **Application State Structure**
 ```javascript
 appState = {
-  // Data
-  rawData: null,           // Original JSON from file
-  processedData: null,     // Processed inventory data
-  fileInfo: null,          // File metadata string
-  userLocation: null,      // User's geographic position
-
-  // UI State
-  keySearchQuery: '',      // Current search filter
-  keySearchShouldRefocus: false,
-  keySearchSelection: null,
-
-  // Sort Configuration
-  sortConfig: {
-    mode: 'alpha',         // Current sort mode for keys
-    directions: {          // Sort direction for each mode
-      alpha: 'asc',
-      count: 'asc',
-      time: 'asc',
-      distance: 'asc'
-    }
-  }
+  rawData: null,           // Original file data
+  processedData: null,     // After container extraction
+  fileInfo: null,          // File name and timestamp
+  userLocation: null,      // For distance calculations
+  keySearchQuery: '',      // Current search
+  sortConfig: { ... }      // Sort modes and directions
 }
 ```
 
-### **State Management Principles**
-- **Immutable Updates**: State changes create new objects rather than mutating existing ones
-- **Single Source of Truth**: All state centralized in the application module
-- **Reactive Updates**: UI automatically updates when state changes
-- **Event-Driven**: State changes triggered by user interactions through events
+When the user interacts with the interface (search, sort, filter), the relevant state gets updated and the UI re-renders. Nothing too fancy - just centralized state so different parts of the app can coordinate.
 
-## Event System
+## Events
 
-### **Custom Events**
-- `keySearch` - Fired when user types in key search box
-- `sortChange` - Fired when user changes sort mode/direction
+Uses custom events for loose coupling between UI components and the main app:
 
-### **Event Flow**
-```
-UI Interaction → Event Dispatch → State Update → Re-render → DOM Update
-```
+- `keySearch` - When user types in the search box
+- `sortChange` - When user clicks sort buttons
 
-## Performance Considerations
+This way the UI components don't need to know about the app's internal state management.
 
-### **Optimization Strategies**
-1. **Debounced Search** - Prevents excessive re-rendering during typing
-2. **Efficient Sorting** - Optimized sort algorithms per item type
-3. **Minimal DOM Updates** - Full re-render approach for simplicity and correctness
-4. **Cached Elements** - DOM element references cached for performance
-5. **Event Delegation** - Efficient event handling for dynamic content
+## Performance notes
 
-### **Memory Management**
-- Event listeners properly cleaned up
-- Large data structures released when clearing inventory
-- No memory leaks in re-render cycles
+**Search debouncing:** Prevents lag when typing by waiting until the user stops typing before filtering results.
 
-## Security Considerations
+**Efficient sorting:** Different item types have optimized sort algorithms instead of generic comparison.
 
-### **Client-Side Security**
-- **XSS Prevention** - All user content properly escaped
-- **JSON Validation** - Robust parsing with error handling
-- **Input Sanitization** - Control character removal from user files
-- **No External Dependencies** - Eliminates supply chain security risks
+**Full re-render:** Simpler than trying to do incremental DOM updates. Just rebuild the whole thing when data changes - it's fast enough for the amount of data we're dealing with.
 
-### **Privacy Protection**
-- **No Data Transmission** - All processing happens locally
-- **No Persistent Storage** - Data cleared on page refresh
-- **No Analytics** - No user behavior tracking
+**Memory management:** Clean up event listeners when clearing data. No major memory concerns with the data sizes we typically see.
 
-## Error Handling Strategy
+## Security and privacy
 
-### **Graceful Degradation**
-- Non-critical features fail silently (e.g., geolocation)
-- Clear error messages for user-facing failures
-- Application remains functional even when some features fail
+**No data transmission:** Everything happens in the browser. Your inventory data never leaves your device.
 
-### **Error Boundaries**
-- File parsing errors don't crash the application
-- Individual feature failures don't affect other features
-- Comprehensive logging for debugging
+**No dependencies:** No external JavaScript libraries that could introduce security issues.
 
-## Browser Compatibility
+**Input validation:** The JSON cleaning handles potentially malicious characters in the export files.
 
-### **Target Support**
-- **Modern Browsers**: Chrome 80+, Firefox 75+, Safari 13+, Edge 80+
-- **Required APIs**: FileReader, Geolocation (optional), ES6+ features
-- **Graceful Fallbacks**: Geolocation failure doesn't break distance sorting
+**No tracking:** No analytics, no cookies, no persistent storage.
 
-### **Progressive Enhancement**
-- Core functionality works without advanced features
-- Enhanced experience with modern browser capabilities
+## Error handling
 
-## Testing Strategy
+**Graceful degradation:** If geolocation doesn't work, distance sorting just doesn't show up. If image assets are missing, show placeholders.
 
-### **Testability Features**
-- **Pure Functions** - Utils module functions easily unit tested
-- **Modular Design** - Individual modules can be tested in isolation
-- **Predictable State** - Application state changes are deterministic
-- **Error Scenarios** - Comprehensive error handling enables negative testing
+**File parsing:** Try to handle malformed JSON exports gracefully. Show useful error messages instead of cryptic JavaScript errors.
 
-### **Testing Approach**
-- Manual testing with various inventory file formats
-- Cross-browser compatibility testing
-- Performance testing with large inventory files
-- Error condition testing (malformed files, missing assets)
+**Feature isolation:** Problems in one part (like image loading) don't break other parts.
 
-## Future Extensibility
+## Browser support
 
-### **Extension Points**
-1. **New Item Types** - Easy addition via constants.js configuration
-2. **Additional Filters** - Extensible filter system in data.js
-3. **New Sort Modes** - Pluggable sort algorithms
-4. **UI Themes** - CSS custom properties enable easy theming
-5. **Export Features** - Modular architecture supports new output formats
+Targets modern browsers with ES6+ support. Uses FileReader API for file handling and Geolocation API for distance calculations (optional).
 
-### **Architectural Flexibility**
-- Module boundaries designed for future enhancement
-- Configuration-driven behavior reduces code changes
-- Event system allows new features without core changes
-- Clear separation enables feature addition without refactoring
+No polyfills or transpilation - keeps things simple at the cost of not supporting older browsers.
 
-## Deployment Architecture
+## Testing
 
-### **Static Hosting Requirements**
-- **Server**: Any static file server (GitHub Pages, Netlify, etc.)
-- **HTTPS**: Required for secure asset loading
-- **File Structure**: Preserve relative paths between modules
+Mostly manual testing with different inventory file formats and sizes. The modular structure makes it easier to test individual pieces in isolation.
 
-### **Build Process**
-- **No Build Required** - Vanilla JavaScript, no compilation needed
-- **Asset Management** - Images organized in assets/ directory
-- **Version Control** - All source files tracked in git
+The utils functions are pure functions so they're straightforward to test if needed.
 
-## Conclusion
+## Future improvements
 
-The Ingress Inventory Viewer demonstrates professional web development practices through:
+**New item types:** Adding support for new items mostly just requires updating the constants and adding image assets.
 
-- **Clean Architecture** - Well-defined module boundaries and responsibilities
-- **Modern JavaScript** - ES6+ features with browser compatibility considerations
-- **User-Centric Design** - Privacy-first approach with excellent user experience
-- **Maintainable Code** - Clear structure enabling easy updates and enhancements
-- **Professional Quality** - Production-ready error handling and performance optimization
+**Additional filters:** The filtering system is extensible - could add filters for level, storage location, etc.
 
-This architecture serves both as a functional tool for Ingress players and a demonstration of advanced frontend development skills for potential employers.
+**Export features:** Could add CSV export, bookmark generation, or other output formats.
+
+**UI improvements:** The modular structure makes it easier to experiment with different interfaces without touching the core data processing.
+
+## Deployment
+
+Static files only - works on any web server. Currently hosted on GitHub Pages.
+
+No build process required since it's vanilla JavaScript. Just need to maintain the relative file paths between modules.
+
+## Notes
+
+Started as a quick hack to view my own inventory data, but organizing it properly made it much more maintainable and easier to add features. The modular structure is probably overkill for something this size, but it makes the code easier to work with.
