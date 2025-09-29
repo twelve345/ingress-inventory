@@ -194,39 +194,12 @@ A sophisticated web application that transforms raw game data into actionable in
 
 ---
 
-## 🏆 Technical Challenges Overcome
-
-### 1. **Data Sanitization**
-- **Challenge**: IITC exports contain invalid control characters breaking JSON parsers
-- **Solution**: Custom sanitization algorithm preserving data integrity while removing problematic characters
-
-### 2. **Complex Data Structures**
-- **Challenge**: Nested containers with recursive item storage (capsules within capsules)
-- **Solution**: Recursive extraction algorithm with proper metadata preservation
-
-### 3. **State Management**
-- **Challenge**: Complex UI state transitions between upload and inventory modes
-- **Solution**: Clean state management pattern with persistent file information
-
-### 4. **Performance at Scale**
-- **Challenge**: Processing thousands of inventory items without UI blocking
-- **Solution**: Efficient algorithms with minimal DOM manipulation
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-Contributions are welcome! This project demonstrates:
-- Clean, maintainable code architecture
-- User-centered design principles
-- Performance optimization techniques
-- Privacy-first development approach
-
-### Development Guidelines
-- Follow existing code style and patterns
-- Maintain client-side only architecture
-- Preserve privacy-first design
-- Add comments for complex algorithms
+Pull requests welcome. The code is organized into modules so it should be pretty straightforward to work with.
 
 ---
 
@@ -236,17 +209,6 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ---
 
-## 🎯 Portfolio Highlights
-
-This project demonstrates proficiency in:
-
-✅ **Software Architecture** - Modular design, separation of concerns, maintainable code structure
-✅ **Frontend Development** - Modern JavaScript (ES6+), CSS Grid/Flexbox, responsive design
-✅ **Data Processing** - JSON manipulation, complex algorithms, robust error handling
-✅ **User Experience** - Intuitive interfaces, drag-and-drop, seamless state management
-✅ **Performance Engineering** - Efficient algorithms, memory management, optimization techniques
-✅ **Code Quality** - Clean code principles, comprehensive documentation, professional practices
-✅ **Problem Solving** - Real-world application, user-focused solutions, technical challenges
 
 ---
 
